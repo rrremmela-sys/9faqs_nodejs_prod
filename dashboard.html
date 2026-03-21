@@ -3,135 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>9faqs Live Dashboard</title>
+<title>9faqs CRM Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #0a0a0f;
-  --surface: #13131a;
-  --surface2: #1a1a24;
-  --border: #1e1e2e;
-  --accent: #00ff88;
-  --accent2: #7c3aed;
-  --text: #e2e8f0;
-  --muted: #64748b;
-  --danger: #ff4757;
-  --warning: #fbbf24;
+  --bg:#0a0a0f; --surface:#13131a; --surface2:#1a1a24; --border:#1e1e2e;
+  --accent:#00ff88; --text:#e2e8f0; --muted:#64748b;
+  --danger:#ff4757; --warning:#fbbf24; --info:#60a5fa; --purple:#a78bfa;
 }
-* { margin:0; padding:0; box-sizing:border-box; }
-body { background:var(--bg); color:var(--text); font-family:'DM Mono',monospace; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
-body::before { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(0,255,136,0.02) 1px,transparent 1px), linear-gradient(90deg,rgba(0,255,136,0.02) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,136,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,0.02) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 
 /* Header */
-header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--surface); position:relative; z-index:10; flex-shrink:0; }
-.logo { display:flex; align-items:center; gap:10px; }
-.logo-icon { width:34px; height:34px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:800; font-size:14px; color:#000; }
-.logo h1 { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; }
-.logo h1 span { color:var(--accent); }
-.header-right { display:flex; align-items:center; gap:16px; }
-.nav-tabs { display:flex; gap:4px; }
-.tab { padding:6px 14px; border-radius:8px; font-size:12px; cursor:pointer; border:1px solid transparent; transition:all 0.2s; color:var(--muted); }
-.tab.active { background:rgba(0,255,136,0.1); border-color:rgba(0,255,136,0.3); color:var(--accent); }
-.tab:hover:not(.active) { background:var(--surface2); color:var(--text); }
-.live-badge { display:flex; align-items:center; gap:6px; background:rgba(0,255,136,0.08); border:1px solid rgba(0,255,136,0.2); padding:5px 12px; border-radius:100px; font-size:11px; color:var(--accent); letter-spacing:1px; text-transform:uppercase; }
-.live-dot { width:6px; height:6px; background:var(--accent); border-radius:50%; animation:pulse 1.5s infinite; }
-@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
+header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;border-bottom:1px solid var(--border);background:var(--surface);z-index:10;flex-shrink:0;}
+.logo{display:flex;align-items:center;gap:10px;}
+.logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:800;font-size:13px;color:#000;}
+.logo h1{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;}
+.logo h1 span{color:var(--accent);}
+.nav-tabs{display:flex;gap:4px;}
+.tab{padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;border:1px solid transparent;transition:all 0.2s;color:var(--muted);}
+.tab.active{background:rgba(0,255,136,0.1);border-color:rgba(0,255,136,0.3);color:var(--accent);}
+.tab:hover:not(.active){background:var(--surface2);color:var(--text);}
+.live-badge{display:flex;align-items:center;gap:6px;background:rgba(0,255,136,0.08);border:1px solid rgba(0,255,136,0.2);padding:5px 12px;border-radius:100px;font-size:11px;color:var(--accent);letter-spacing:1px;}
+.live-dot{width:6px;height:6px;background:var(--accent);border-radius:50%;animation:pulse 1.5s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
 
-/* Main Layout */
-.main { display:flex; flex:1; overflow:hidden; position:relative; z-index:1; }
+/* Notification */
+.notif{position:fixed;top:70px;right:20px;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:12px 18px;font-size:12px;color:var(--accent);z-index:999;display:none;box-shadow:0 4px 24px rgba(0,255,136,0.15);}
 
-/* Pages */
-.page { display:none; width:100%; }
-.page.active { display:flex; }
+/* Main */
+.main{display:flex;flex:1;overflow:hidden;position:relative;z-index:1;}
+.page{display:none;width:100%;}
+.page.active{display:flex;}
 
 /* ── LEADS PAGE ── */
-#leadsPage { flex-direction:column; padding:24px; overflow-y:auto; }
-.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:24px; }
-.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; position:relative; overflow:hidden; }
-.stat-card::after { content:''; position:absolute; top:0;left:0; width:3px;height:100%; background:var(--accent); border-radius:3px 0 0 3px; }
-.stat-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
-.stat-value { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; color:var(--accent); }
-.controls { display:flex; gap:10px; margin-bottom:18px; }
-.search-box { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 14px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; outline:none; }
-.search-box:focus { border-color:var(--accent); }
-.search-box::placeholder { color:var(--muted); }
-.btn { background:var(--accent); color:#000; border:none; border-radius:8px; padding:9px 16px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:opacity 0.2s; white-space:nowrap; }
-.btn:hover { opacity:0.85; }
-.btn-outline { background:transparent; color:var(--accent); border:1px solid var(--accent); }
-.btn-sm { padding:5px 12px; font-size:11px; border-radius:6px; }
-.btn-danger { background:var(--danger); color:#fff; }
-.table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-table { width:100%; border-collapse:collapse; }
-thead { background:rgba(0,255,136,0.04); border-bottom:1px solid var(--border); }
-th { padding:12px 16px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); }
-td { padding:14px 16px; font-size:12px; border-bottom:1px solid rgba(30,30,46,0.6); }
-tr:last-child td { border-bottom:none; }
-tr:hover td { background:rgba(0,255,136,0.02); }
-.name-cell { font-family:'Syne',sans-serif; font-weight:600; font-size:13px; }
-.phone-cell { color:var(--muted); }
-.course-badge { display:inline-block; padding:3px 10px; border-radius:100px; font-size:10px; }
-.course-python  { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.2); }
-.course-ai      { background:rgba(124,58,237,0.15); color:#a78bfa; border:1px solid rgba(124,58,237,0.2); }
-.course-web     { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.2); }
-.course-general { background:rgba(100,116,139,0.15); color:#94a3b8; border:1px solid rgba(100,116,139,0.2); }
-.time-cell { color:var(--muted); font-size:11px; }
-.empty { text-align:center; padding:48px; color:var(--muted); }
+#leadsPage{flex-direction:column;padding:20px;overflow-y:auto;gap:16px;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;position:relative;overflow:hidden;}
+.stat-card::after{content:'';position:absolute;top:0;left:0;width:3px;height:100%;border-radius:3px 0 0 3px;}
+.stat-card.green::after{background:var(--accent);}
+.stat-card.blue::after{background:var(--info);}
+.stat-card.yellow::after{background:var(--warning);}
+.stat-card.purple::after{background:var(--purple);}
+.stat-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;}
+.stat-value{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--accent);}
+.stat-value.blue{color:var(--info);}
+.stat-value.yellow{color:var(--warning);}
+.stat-value.purple{color:var(--purple);}
+
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.search-box{flex:1;min-width:200px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;}
+.search-box:focus{border-color:var(--accent);}
+.search-box::placeholder{color:var(--muted);}
+select.filter-select{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;cursor:pointer;}
+.btn{background:var(--accent);color:#000;border:none;border-radius:8px;padding:8px 16px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;cursor:pointer;transition:opacity 0.2s;white-space:nowrap;}
+.btn:hover{opacity:0.85;}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+.btn-sm{padding:4px 10px;font-size:11px;border-radius:6px;}
+.btn-warning{background:var(--warning);color:#000;}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead{background:rgba(0,255,136,0.04);border-bottom:1px solid var(--border);}
+th{padding:11px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);}
+td{padding:13px 14px;font-size:12px;border-bottom:1px solid rgba(30,30,46,0.5);}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:rgba(0,255,136,0.02);}
+.name-cell{font-family:'Syne',sans-serif;font-weight:600;font-size:13px;}
+.muted{color:var(--muted);}
+.empty{text-align:center;padding:48px;color:var(--muted);}
+
+/* Labels */
+.label{display:inline-block;padding:3px 10px;border-radius:100px;font-size:10px;font-weight:600;}
+.label-ENROLLED{background:rgba(0,255,136,0.1);color:var(--accent);border:1px solid rgba(0,255,136,0.3);}
+.label-HOT,.label-HOT\ LEAD{background:rgba(255,71,87,0.1);color:var(--danger);border:1px solid rgba(255,71,87,0.3);}
+.label-PENDING{background:rgba(251,191,36,0.1);color:var(--warning);border:1px solid rgba(251,191,36,0.3);}
+.label-NEW{background:rgba(96,165,250,0.1);color:var(--info);border:1px solid rgba(96,165,250,0.3);}
+.label-INTERESTED{background:rgba(167,139,250,0.1);color:var(--purple);border:1px solid rgba(167,139,250,0.3);}
+
+/* Course badges */
+.course-badge{display:inline-block;padding:2px 9px;border-radius:100px;font-size:10px;}
+.c-python{background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.2);}
+.c-ai{background:rgba(124,58,237,0.12);color:#a78bfa;border:1px solid rgba(124,58,237,0.2);}
+.c-web{background:rgba(245,158,11,0.12);color:#fbbf24;border:1px solid rgba(245,158,11,0.2);}
+.c-data{background:rgba(16,185,129,0.12);color:#34d399;border:1px solid rgba(16,185,129,0.2);}
+.c-general{background:rgba(100,116,139,0.12);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);}
 
 /* ── CHAT PAGE ── */
-#chatPage { flex-direction:row; }
-.sidebar { width:300px; border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; background:var(--surface); }
-.sidebar-header { padding:16px; border-bottom:1px solid var(--border); }
-.sidebar-header h3 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:10px; }
-.conv-search { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; outline:none; }
-.conv-search::placeholder { color:var(--muted); }
-.conv-list { flex:1; overflow-y:auto; }
-.conv-item { padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s; display:flex; gap:12px; align-items:flex-start; }
-.conv-item:hover { background:var(--surface2); }
-.conv-item.active { background:rgba(0,255,136,0.06); border-left:3px solid var(--accent); }
-.conv-avatar { width:36px; height:36px; border-radius:50%; background:var(--accent2); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:700; font-size:14px; color:#fff; flex-shrink:0; }
-.conv-info { flex:1; min-width:0; }
-.conv-name { font-family:'Syne',sans-serif; font-size:13px; font-weight:600; margin-bottom:3px; display:flex; align-items:center; gap:6px; }
-.conv-preview { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.human-badge { display:inline-block; padding:1px 6px; background:rgba(251,191,36,0.15); color:var(--warning); border:1px solid rgba(251,191,36,0.3); border-radius:4px; font-size:9px; letter-spacing:0.5px; }
-.bot-badge { display:inline-block; padding:1px 6px; background:rgba(0,255,136,0.1); color:var(--accent); border:1px solid rgba(0,255,136,0.2); border-radius:4px; font-size:9px; }
+#chatPage{flex-direction:row;}
+.sidebar{width:280px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface);flex-shrink:0;}
+.sidebar-header{padding:14px;border-bottom:1px solid var(--border);}
+.sidebar-header h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;margin-bottom:8px;}
+.conv-search{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:7px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;}
+.conv-search::placeholder{color:var(--muted);}
+.conv-list{flex:1;overflow-y:auto;}
+.conv-item{padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;display:flex;gap:10px;align-items:flex-start;}
+.conv-item:hover{background:var(--surface2);}
+.conv-item.active{background:rgba(0,255,136,0.06);border-left:3px solid var(--accent);}
+.conv-avatar{width:34px;height:34px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:#fff;flex-shrink:0;}
+.conv-info{flex:1;min-width:0;}
+.conv-name{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:2px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;}
+.conv-preview{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.badge-human{display:inline-block;padding:1px 5px;background:rgba(251,191,36,0.15);color:var(--warning);border:1px solid rgba(251,191,36,0.3);border-radius:4px;font-size:9px;}
+.badge-bot{display:inline-block;padding:1px 5px;background:rgba(0,255,136,0.1);color:var(--accent);border:1px solid rgba(0,255,136,0.2);border-radius:4px;font-size:9px;}
 
-/* Chat Window */
-.chat-window { flex:1; display:flex; flex-direction:column; }
-.chat-header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:var(--surface); }
-.chat-header-info { display:flex; align-items:center; gap:12px; }
-.chat-avatar { width:38px; height:38px; border-radius:50%; background:var(--accent2); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:700; font-size:15px; color:#fff; }
-.chat-name { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; }
-.chat-phone { font-size:11px; color:var(--muted); }
-.chat-actions { display:flex; gap:8px; }
-.messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:10px; }
-.msg { max-width:70%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
-.msg.in { background:var(--surface2); border:1px solid var(--border); align-self:flex-start; border-bottom-left-radius:4px; }
-.msg.out { background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.2); color:var(--accent); align-self:flex-end; border-bottom-right-radius:4px; }
-.msg-time { font-size:10px; color:var(--muted); margin-top:4px; }
-.msg-sender { font-size:10px; color:var(--muted); margin-bottom:3px; }
-.chat-input-area { padding:16px 20px; border-top:1px solid var(--border); background:var(--surface); }
-.chat-input-row { display:flex; gap:10px; }
-.chat-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 14px; color:var(--text); font-family:'DM Mono',monospace; font-size:13px; outline:none; resize:none; }
-.chat-input:focus { border-color:var(--accent); }
-.send-btn { background:var(--accent); color:#000; border:none; border-radius:10px; padding:10px 20px; font-family:'Syne',sans-serif; font-weight:700; cursor:pointer; }
-.no-chat { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; flex-direction:column; gap:12px; }
-.no-chat-icon { font-size:40px; }
+/* Chat window */
+.chat-window{flex:1;display:flex;flex-direction:column;}
+.chat-header{padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);}
+.chat-header-info{display:flex;align-items:center;gap:10px;}
+.chat-avatar{width:36px;height:36px;border-radius:50%;background:#7c3aed;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:#fff;}
+.chat-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;}
+.chat-phone{font-size:11px;color:var(--muted);}
+.chat-actions{display:flex;gap:6px;align-items:center;}
+.tag-select{background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;outline:none;cursor:pointer;}
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:8px;}
+.msg-wrap{display:flex;flex-direction:column;}
+.msg-wrap.out{align-items:flex-end;}
+.msg-sender{font-size:10px;color:var(--muted);margin-bottom:2px;padding:0 4px;}
+.msg{max-width:68%;padding:9px 13px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
+.msg.in{background:var(--surface2);border:1px solid var(--border);border-bottom-left-radius:4px;}
+.msg.out{background:rgba(0,255,136,0.1);border:1px solid rgba(0,255,136,0.2);color:var(--accent);border-bottom-right-radius:4px;}
+.msg-time{font-size:10px;color:var(--muted);padding:0 4px;margin-top:2px;}
+.chat-input-area{padding:14px 18px;border-top:1px solid var(--border);background:var(--surface);}
+.mode-info{font-size:11px;color:var(--muted);margin-bottom:8px;}
+.chat-input-row{display:flex;gap:8px;}
+.chat-input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:9px 13px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;outline:none;resize:none;}
+.chat-input:focus{border-color:var(--accent);}
+.send-btn{background:var(--accent);color:#000;border:none;border-radius:10px;padding:9px 18px;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;}
+.no-chat{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);flex-direction:column;gap:12px;}
+.no-chat-icon{font-size:36px;}
 </style>
 </head>
 <body>
 
+<div class="notif" id="notif">🔔 <span id="notifText"></span></div>
+
 <header>
   <div class="logo">
     <div class="logo-icon">9F</div>
-    <h1>9faqs <span>Dashboard</span></h1>
+    <h1>9faqs <span>CRM</span></h1>
   </div>
   <div class="nav-tabs">
-    <div class="tab active" onclick="showPage('leads')">📊 Leads</div>
-    <div class="tab" onclick="showPage('chat')">💬 Live Chat</div>
+    <div class="tab active" id="tab-leads" onclick="showPage('leads',this)">📊 Leads</div>
+    <div class="tab" id="tab-chat" onclick="showPage('chat',this)">💬 Live Chat</div>
   </div>
-  <div class="header-right">
-    <div class="live-badge"><div class="live-dot"></div>Live</div>
-  </div>
+  <div class="live-badge"><div class="live-dot"></div>Live</div>
 </header>
 
 <div class="main">
@@ -139,19 +156,47 @@ tr:hover td { background:rgba(0,255,136,0.02); }
   <!-- LEADS PAGE -->
   <div class="page active" id="leadsPage">
     <div class="stats">
-      <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value" id="totalLeads">—</div></div>
-      <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value" id="todayLeads">—</div></div>
-      <div class="stat-card"><div class="stat-label">Top Course</div><div class="stat-value" style="font-size:18px;margin-top:6px" id="topCourse">—</div></div>
+      <div class="stat-card green"><div class="stat-label">Total Leads</div><div class="stat-value" id="statTotal">—</div></div>
+      <div class="stat-card blue"><div class="stat-label">Enrolled</div><div class="stat-value blue" id="statEnrolled">—</div></div>
+      <div class="stat-card yellow"><div class="stat-label">Hot Leads</div><div class="stat-value yellow" id="statHot">—</div></div>
+      <div class="stat-card purple"><div class="stat-label">Today</div><div class="stat-value purple" id="statToday">—</div></div>
     </div>
     <div class="controls">
-      <input class="search-box" id="searchBox" placeholder="Search name, phone, course..." oninput="filterLeads()">
+      <input class="search-box" id="searchBox" placeholder="Search name, phone, email, course..." oninput="filterLeads()">
+      <select class="filter-select" id="labelFilter" onchange="filterLeads()">
+        <option value="">All Labels</option>
+        <option value="ENROLLED">✅ Enrolled</option>
+        <option value="HOT">🔥 Hot Lead</option>
+        <option value="PENDING">⏳ Pending</option>
+        <option value="NEW">🆕 New</option>
+        <option value="INTERESTED">👀 Interested</option>
+      </select>
+      <select class="filter-select" id="courseFilter" onchange="filterLeads()">
+        <option value="">All Courses</option>
+        <option value="Python">Python</option>
+        <option value="AI">AI</option>
+        <option value="Web">Web</option>
+        <option value="Data">Data</option>
+      </select>
       <button class="btn btn-outline" onclick="loadLeads()">↻ Refresh</button>
       <button class="btn" onclick="exportCSV()">↓ CSV</button>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Course</th><th>Time</th></tr></thead>
-        <tbody id="leadsTable"><tr><td colspan="5"><div class="empty">Loading...</div></td></tr></tbody>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Phone</th>
+            <th>Email</th>
+            <th>Course</th>
+            <th>Label</th>
+            <th>Time (IST)</th>
+          </tr>
+        </thead>
+        <tbody id="leadsTable">
+          <tr><td colspan="7"><div class="empty">Loading...</div></td></tr>
+        </tbody>
       </table>
     </div>
   </div>
@@ -164,7 +209,7 @@ tr:hover td { background:rgba(0,255,136,0.02); }
         <input class="conv-search" placeholder="Search..." oninput="filterConvs(this.value)">
       </div>
       <div class="conv-list" id="convList">
-        <div class="empty" style="padding:30px">No conversations yet</div>
+        <div class="empty" style="padding:30px;font-size:12px">No conversations</div>
       </div>
     </div>
     <div class="chat-window" id="chatWindow">
@@ -176,91 +221,129 @@ tr:hover td { background:rgba(0,255,136,0.02); }
 
 <script>
 const API = "https://ninefaqs-bot.onrender.com";
-let allLeads = [];
-let allConvs = [];
-let activePhone = null;
-let ws = null;
+let allLeads = [], allConvs = [], activePhone = null, ws = null;
+
+// ── NOTIFICATION ──
+function showNotif(text) {
+  const el = document.getElementById("notif");
+  document.getElementById("notifText").textContent = text;
+  el.style.display = "block";
+  try {
+    const ctx  = new AudioContext();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(); osc.stop(ctx.currentTime + 0.3);
+  } catch(e) {}
+  setTimeout(() => el.style.display = "none", 4000);
+}
 
 // ── PAGES ──
-function showPage(page) {
+function showPage(page, tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(page + 'Page').classList.add('active');
-  event.target.classList.add('active');
-  if (page === 'chat') loadConversations();
+  tab.classList.add('active');
+  if (page === 'chat')  loadConversations();
   if (page === 'leads') loadLeads();
 }
 
-// ── LEADS ──
-async function loadLeads() {
-  try {
-    const res  = await fetch(API + "/leads");
-    allLeads   = (await res.json()).reverse();
-    renderLeads(allLeads);
-    updateStats(allLeads);
-  } catch(e) {
-    document.getElementById("leadsTable").innerHTML = `<tr><td colspan="5"><div class="empty">⚠️ Could not load leads</div></td></tr>`;
-  }
-}
-
-function getCourseClass(c) {
-  if (!c) return "course-general";
-  c = c.toLowerCase();
-  if (c.includes("python")) return "course-python";
-  if (c.includes("ai"))     return "course-ai";
-  if (c.includes("web"))    return "course-web";
-  return "course-general";
-}
-
+// ── FORMAT HELPERS ──
 function formatTime(ts) {
   if (!ts) return "—";
   try {
     return new Date(ts).toLocaleString("en-IN", {
       day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit",
       hour12:true, timeZone:"Asia/Kolkata"
-    }) + " IST";
+    });
   } catch { return ts; }
+}
+
+function getCourseClass(c) {
+  if (!c) return "c-general";
+  c = c.toLowerCase();
+  if (c.includes("python")) return "c-python";
+  if (c.includes("ai"))     return "c-ai";
+  if (c.includes("web"))    return "c-web";
+  if (c.includes("data"))   return "c-data";
+  return "c-general";
+}
+
+function getLabelClass(l) {
+  if (!l) return "label-NEW";
+  if (l.includes("ENROLLED"))   return "label-ENROLLED";
+  if (l.includes("HOT"))        return "label-HOT";
+  if (l.includes("PENDING"))    return "label-PENDING";
+  if (l.includes("INTERESTED")) return "label-INTERESTED";
+  return "label-NEW";
+}
+
+// ── LEADS ──
+async function loadLeads() {
+  try {
+    const res = await fetch(API + "/leads");
+    allLeads  = await res.json();
+    renderLeads(allLeads);
+    updateStats(allLeads);
+  } catch(e) {
+    document.getElementById("leadsTable").innerHTML =
+      `<tr><td colspan="7"><div class="empty">⚠️ Could not load leads</div></td></tr>`;
+  }
 }
 
 function renderLeads(leads) {
   const tbody = document.getElementById("leadsTable");
-  if (!leads.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty">📭 No leads yet</div></td></tr>`; return; }
-  tbody.innerHTML = leads.map((l,i) => `
+  if (!leads.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty">📭 No leads yet. Send a WhatsApp message to start!</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = leads.map((l, i) => `
     <tr>
-      <td style="color:var(--muted)">${i+1}</td>
-      <td class="name-cell">${l.name||"—"}</td>
-      <td class="phone-cell">${l.phone||"—"}</td>
-      <td><span class="course-badge ${getCourseClass(l.course)}">${l.course||"General"}</span></td>
-      <td class="time-cell">${formatTime(l.timestamp)}</td>
+      <td class="muted">${i + 1}</td>
+      <td class="name-cell">${l.name || "—"}</td>
+      <td class="muted">${l.phone || "—"}</td>
+      <td class="muted">${l.email || "—"}</td>
+      <td><span class="course-badge ${getCourseClass(l.course)}">${l.course || "—"}</span></td>
+      <td><span class="label ${getLabelClass(l.label)}">${l.label || "NEW"}</span></td>
+      <td class="muted" style="font-size:11px">${formatTime(l.timestamp)}</td>
     </tr>`).join("");
 }
 
 function updateStats(leads) {
-  document.getElementById("totalLeads").textContent = leads.length;
+  document.getElementById("statTotal").textContent    = leads.length;
+  document.getElementById("statEnrolled").textContent = leads.filter(l => (l.label||"") === "ENROLLED").length;
+  document.getElementById("statHot").textContent      = leads.filter(l => (l.label||"").includes("HOT")).length;
   const today = new Date().toDateString();
-  const todayCount = leads.filter(l => { try { return new Date(l.timestamp).toDateString()===today; } catch{return false;} }).length;
-  document.getElementById("todayLeads").textContent = todayCount;
-  const cc = {};
-  leads.forEach(l => { const c=l.course||"General"; cc[c]=(cc[c]||0)+1; });
-  const top = Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
-  document.getElementById("topCourse").textContent = top ? top[0].split(" ")[0] : "—";
+  document.getElementById("statToday").textContent    = leads.filter(l => {
+    try { return new Date(l.timestamp).toDateString() === today; } catch { return false; }
+  }).length;
 }
 
 function filterLeads() {
-  const q = document.getElementById("searchBox").value.toLowerCase();
-  renderLeads(allLeads.filter(l =>
-    (l.name||"").toLowerCase().includes(q) ||
-    (l.phone||"").toLowerCase().includes(q) ||
-    (l.course||"").toLowerCase().includes(q)
-  ));
+  const q      = document.getElementById("searchBox").value.toLowerCase();
+  const label  = document.getElementById("labelFilter").value;
+  const course = document.getElementById("courseFilter").value;
+  renderLeads(allLeads.filter(l => {
+    const matchQ = !q ||
+      (l.name||"").toLowerCase().includes(q) ||
+      (l.phone||"").includes(q) ||
+      (l.email||"").toLowerCase().includes(q) ||
+      (l.course||"").toLowerCase().includes(q);
+    const matchL = !label  || (l.label||"").includes(label);
+    const matchC = !course || (l.course||"").includes(course);
+    return matchQ && matchL && matchC;
+  }));
 }
 
 function exportCSV() {
-  if (!allLeads.length) return alert("No leads!");
-  const rows = [["Name","Phone","Course","Timestamp"], ...allLeads.map(l=>[l.name,l.phone,l.course,l.timestamp])];
-  const csv  = rows.map(r=>r.join(",")).join("\n");
+  if (!allLeads.length) return alert("No leads to export!");
+  const rows = [["Name","Phone","Email","Course","Label","Timestamp"],
+    ...allLeads.map(l => [l.name,l.phone,l.email||"",l.course,l.label,l.timestamp])];
   const a    = document.createElement("a");
-  a.href     = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.href     = URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
   a.download = "9faqs_leads.csv";
   a.click();
 }
@@ -276,25 +359,29 @@ async function loadConversations() {
 
 function renderConvs(convs) {
   const list = document.getElementById("convList");
-  if (!convs.length) { list.innerHTML = `<div class="empty" style="padding:30px">No conversations yet</div>`; return; }
+  if (!convs.length) {
+    list.innerHTML = `<div class="empty" style="padding:30px;font-size:12px">No conversations yet</div>`;
+    return;
+  }
   list.innerHTML = convs.map(c => `
-    <div class="conv-item ${c.phone===activePhone?'active':''}" onclick="openChat('${c.phone}','${(c.name||c.phone).replace(/'/g,"\\'")}',${c.is_human})">
+    <div class="conv-item ${c.phone === activePhone ? 'active' : ''}"
+         onclick="openChat('${c.phone}','${(c.name||c.phone).replace(/'/g,"\\'")}',${c.is_human})">
       <div class="conv-avatar">${(c.name||"?")[0].toUpperCase()}</div>
       <div class="conv-info">
         <div class="conv-name">
-          ${c.name||c.phone}
-          ${c.is_human ? '<span class="human-badge">HUMAN</span>' : '<span class="bot-badge">BOT</span>'}
+          ${c.name || c.phone}
+          ${c.is_human
+            ? '<span class="badge-human">HUMAN</span>'
+            : '<span class="badge-bot">BOT</span>'}
         </div>
-        <div class="conv-preview">${c.last_message||""}</div>
+        <div class="conv-preview">${(c.last_message||"").substring(0,40)}</div>
       </div>
     </div>`).join("");
 }
 
 function filterConvs(q) {
   renderConvs(allConvs.filter(c =>
-    (c.name||"").toLowerCase().includes(q.toLowerCase()) ||
-    c.phone.includes(q)
-  ));
+    (c.name||"").toLowerCase().includes(q.toLowerCase()) || c.phone.includes(q)));
 }
 
 async function openChat(phone, name, isHuman) {
@@ -313,44 +400,58 @@ async function openChat(phone, name, isHuman) {
         </div>
       </div>
       <div class="chat-actions">
+        <select class="tag-select" onchange="tagConv('${phone}',this.value)">
+          <option value="">🏷 Tag</option>
+          <option value="HOT LEAD">🔥 HOT LEAD</option>
+          <option value="ENROLLED">✅ ENROLLED</option>
+          <option value="PENDING">⏳ PENDING</option>
+          <option value="INTERESTED">👀 INTERESTED</option>
+        </select>
         ${isHuman
           ? `<button class="btn btn-sm btn-outline" onclick="handback('${phone}')">🤖 Hand to Bot</button>`
-          : `<button class="btn btn-sm" style="background:var(--warning);color:#000" onclick="takeover('${phone}')">👤 Take Over</button>`
-        }
+          : `<button class="btn btn-sm btn-warning" onclick="takeover('${phone}')">👤 Take Over</button>`}
       </div>
     </div>
     <div class="messages" id="msgList">
       ${msgs.map(m => `
-        <div>
-          <div class="msg-sender">${m.direction==='in'?name:'Bot/Agent'}</div>
-          <div class="msg ${m.direction}">${m.text.replace(/\n/g,'<br>')}</div>
+        <div class="msg-wrap ${m.direction}">
+          <div class="msg-sender">${m.name || (m.direction==='in' ? name : 'Bot')}</div>
+          <div class="msg ${m.direction}">${(m.text||"")
+            .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+            .replace(/\n/g,"<br>")
+            .replace(/\*(.*?)\*/g,"<strong>$1</strong>")}</div>
           <div class="msg-time">${formatTime(m.timestamp)}</div>
         </div>`).join("")}
     </div>
-    <div class="chat-input-area" id="inputArea" style="${isHuman?'':'opacity:0.4;pointer-events:none'}">
-      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
-        ${isHuman ? '✅ Human mode — you are replying' : '🤖 Bot is handling — click Take Over to reply manually'}
+    <div class="chat-input-area">
+      <div class="mode-info">
+        ${isHuman
+          ? '✅ Human mode — you are replying directly'
+          : '🤖 Bot is handling — click Take Over to reply manually'}
       </div>
-      <div class="chat-input-row">
-        <textarea class="chat-input" id="replyInput" rows="2" placeholder="Type your reply..."></textarea>
+      <div class="chat-input-row" style="${isHuman ? '' : 'opacity:0.4;pointer-events:none'}">
+        <textarea class="chat-input" id="replyInput" rows="2" placeholder="Type your reply..."
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendReply('${phone}')}">
+        </textarea>
         <button class="send-btn" onclick="sendReply('${phone}')">Send</button>
       </div>
     </div>`;
 
-  // Scroll to bottom
-  const msgList = document.getElementById("msgList");
-  if (msgList) msgList.scrollTop = msgList.scrollHeight;
+  const ml = document.getElementById("msgList");
+  if (ml) ml.scrollTop = ml.scrollHeight;
 }
 
 async function takeover(phone) {
   await fetch(`${API}/takeover/${phone}`, {method:"POST"});
-  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, true);
+  const name = document.querySelector('.chat-name')?.textContent || phone;
+  openChat(phone, name, true);
   loadConversations();
 }
 
 async function handback(phone) {
   await fetch(`${API}/handback/${phone}`, {method:"POST"});
-  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, false);
+  const name = document.querySelector('.chat-name')?.textContent || phone;
+  openChat(phone, name, false);
   loadConversations();
 }
 
@@ -360,40 +461,57 @@ async function sendReply(phone) {
   if (!msg) return;
   input.value = "";
   await fetch(`${API}/reply/${phone}`, {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
     body: JSON.stringify({message: msg})
   });
-  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, true);
+  const name = document.querySelector('.chat-name')?.textContent || phone;
+  openChat(phone, name, true);
 }
 
-// ── WEBSOCKET for real-time ──
+async function tagConv(phone, tag) {
+  if (!tag) return;
+  await fetch(`${API}/tag/${phone}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({tag})
+  });
+  showNotif(`Tagged as ${tag} ✅`);
+  loadLeads();
+}
+
+// ── WEBSOCKET ──
 function connectWS() {
   const wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/ws";
   ws = new WebSocket(wsUrl);
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
-    if (data.type === "new_message") {
-      // Refresh conversations list
+    if (data.type === "new_message" && data.direction === "in") {
+      showNotif(`💬 ${data.name||data.phone}: ${(data.text||"").substring(0,35)}...`);
       loadConversations();
-      // If chat is open for this phone, refresh it
       if (activePhone === data.phone) {
         const name = document.querySelector('.chat-name')?.textContent || data.phone;
-        const isHuman = data.direction === "out" && data.name === "Agent";
-        openChat(data.phone, name, isHuman);
+        openChat(data.phone, name, false);
       }
+    }
+    if (data.type === "new_message" && data.direction === "out") {
+      loadConversations();
     }
   };
 
-  ws.onclose = () => setTimeout(connectWS, 3000); // reconnect
+  ws.onclose = () => setTimeout(connectWS, 3000);
 }
 
 // ── INIT ──
 loadLeads();
 connectWS();
 setInterval(loadLeads, 30000);
-setInterval(() => { if(document.getElementById('chatPage').classList.contains('active')) loadConversations(); }, 5000);
+setInterval(() => {
+  if (document.getElementById('chatPage').classList.contains('active')) {
+    loadConversations();
+  }
+}, 5000);
 </script>
 </body>
 </html>
