@@ -121,6 +121,34 @@ class UserControl(Base):
     tag      = Column(String, default="")
 
 Base.metadata.create_all(engine)
+
+# ── DB MIGRATION: Add missing columns safely ──
+from sqlalchemy import text
+with engine.connect() as conn:
+    try:
+        conn.execute(text("ALTER TABLE user_control ADD COLUMN tag VARCHAR DEFAULT ''"))
+        conn.commit()
+        print("✅ Migration: added tag column")
+    except Exception:
+        pass  # Column already exists
+    try:
+        conn.execute(text("ALTER TABLE leads ADD COLUMN email VARCHAR DEFAULT ''"))
+        conn.commit()
+        print("✅ Migration: added email column")
+    except Exception:
+        pass
+    try:
+        conn.execute(text("ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'new'"))
+        conn.commit()
+        print("✅ Migration: added status column")
+    except Exception:
+        pass
+    try:
+        conn.execute(text("ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'"))
+        conn.commit()
+        print("✅ Migration: added label column")
+    except Exception:
+        pass
 Session = sessionmaker(bind=engine)
 
 def save_lead(phone, name, email, course):
