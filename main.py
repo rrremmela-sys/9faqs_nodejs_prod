@@ -225,7 +225,7 @@ def course_list_msg():
     lines = ["📚 *Available Courses:*\n"]
     for i, (_, c) in enumerate(COURSES.items(), 1):
         lines.append(f"{i}. {c['emoji']} {c['name']} — {c['price']}")
-    lines.append("\nReply with course name to know more!")
+    lines.append("\nReply with *number* to know more! (e.g. 1, 2, 3, 4)")
     return "\n".join(lines)
 
 def course_detail_msg(key):
@@ -293,23 +293,36 @@ def handle_message(text, phone):
     # View courses
     if msg in ["1", "courses", "course", "view courses", "view"]:
         session["fallback_count"] = 0
+        set_step(phone, "pick_course")
         return course_list_msg()
 
-    # Course details
+    # Pick course by number (1-4) after seeing list
+    if step == "pick_course" or msg in ["1","2","3","4"]:
+        course_keys = list(COURSES.keys())
+        course_map  = {str(i+1): key for i, key in enumerate(course_keys)}
+        if msg in course_map:
+            key = course_map[msg]
+            save_to_session(phone, "course", COURSES[key]["name"])
+            set_step(phone, None)
+            session["fallback_count"] = 0
+            return course_detail_msg(key)
+
+    # Course details by name
     for key in COURSES:
         if key in msg:
             save_to_session(phone, "course", COURSES[key]["name"])
+            set_step(phone, None)
             session["fallback_count"] = 0
             return course_detail_msg(key)
 
     # Start enrollment
-    if msg in ["2", "enroll", "enroll now", "join", "register"]:
+    if msg in ["2", "enroll", "enroll now", "join", "register"] and step != "pick_course":
         set_step(phone, "ask_name")
         session["fallback_count"] = 0
         return f"Great choice! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
 
     # Talk to counselor
-    if msg in ["3", "counselor", "human", "agent", "help", "talk"]:
+    if msg in ["3", "counselor", "human", "agent", "help", "talk"] and step != "pick_course":
         set_human_mode(phone, True)
         session["fallback_count"] = 0
         return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
