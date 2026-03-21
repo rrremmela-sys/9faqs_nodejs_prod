@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>9faqs Lead Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --border: #1e1e2e;
+    --accent: #00ff88;
+    --accent2: #7c3aed;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --danger: #ff4757;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 48px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--accent);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: #000;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,255,136,0.08);
+    border: 1px solid rgba(0,255,136,0.2);
+    padding: 6px 14px;
+    border-radius: 100px;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Stats Row */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 36px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .stat-card:hover { border-color: var(--accent); }
+
+  .stat-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+    border-radius: 3px 0 0 3px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 10px;
+  }
+
+  .stat-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 24px;
+    align-items: center;
+  }
+
+  .search-box {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 16px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .search-box:focus { border-color: var(--accent); }
+  .search-box::placeholder { color: var(--muted); }
+
+  .btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 20px;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { opacity: 0.85; }
+  .btn:active { transform: scale(0.97); }
+
+  .btn-outline {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+  }
+
+  /* Table */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead {
+    background: rgba(0,255,136,0.04);
+    border-bottom: 1px solid var(--border);
+  }
+
+  th {
+    padding: 14px 20px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+
+  td {
+    padding: 16px 20px;
+    font-size: 13px;
+    border-bottom: 1px solid rgba(30,30,46,0.6);
+    transition: background 0.15s;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(0,255,136,0.03); }
+
+  .name-cell {
+    font-family: 'Syne', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .phone-cell { color: var(--muted); }
+
+  .course-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+
+  .course-python  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
+  .course-ai      { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.2); }
+  .course-web     { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+  .course-general { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+
+  .time-cell { color: var(--muted); font-size: 12px; }
+
+  /* Empty state */
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty p { font-size: 14px; }
+
+  /* Loading */
+  .loading {
+    text-align: center;
+    padding: 60px;
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  /* Footer */
+  footer {
+    margin-top: 32px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  @media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr; }
+    header { flex-direction: column; gap: 16px; align-items: flex-start; }
+    td, th { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">9F</div>
+      <h1>9faqs <span>Leads</span></h1>
+    </div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      Live Dashboard
+    </div>
+  </header>
+
+  <!-- Stats -->
+  <div class="stats">
+    <div class="stat-card">
+      <div class="stat-label">Total Leads</div>
+      <div class="stat-value" id="totalLeads">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Today</div>
+      <div class="stat-value" id="todayLeads">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Top Course</div>
+      <div class="stat-value" style="font-size:20px; margin-top:6px;" id="topCourse">—</div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <input class="search-box" id="searchBox" type="text" placeholder="Search by name, phone or course..." oninput="filterLeads()">
+    <button class="btn btn-outline" onclick="loadLeads()">↻ Refresh</button>
+    <button class="btn" onclick="exportCSV()">↓ Export CSV</button>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Course</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody id="leadsTable">
+        <tr><td colspan="5"><div class="loading">Loading leads...</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>9faqs enrollment bot dashboard · auto-refreshes every 30s</footer>
+</div>
+
+<script>
+  // ── CONFIG ──
+  const API_URL = "https://ninefaqs-bot.onrender.com/leads";
+
+  let allLeads = [];
+
+  async function loadLeads() {
+    try {
+      const res  = await fetch(API_URL);
+      const data = await res.json();
+      allLeads   = data.reverse(); // newest first
+      renderLeads(allLeads);
+      updateStats(allLeads);
+    } catch (e) {
+      document.getElementById("leadsTable").innerHTML =
+        `<tr><td colspan="5"><div class="empty"><div class="empty-icon">⚠️</div><p>Could not connect to API.<br>Make sure the bot server is running.</p></div></td></tr>`;
+    }
+  }
+
+  function getCourseClass(course) {
+    if (!course) return "course-general";
+    const c = course.toLowerCase();
+    if (c.includes("python")) return "course-python";
+    if (c.includes("ai"))     return "course-ai";
+    if (c.includes("web"))    return "course-web";
+    return "course-general";
+  }
+
+  function formatTime(ts) {
+    if (!ts) return "—";
+    try {
+      const d = new Date(ts);
+      return d.toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+    } catch { return ts; }
+  }
+
+  function renderLeads(leads) {
+    const tbody = document.getElementById("leadsTable");
+    if (!leads.length) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">📭</div><p>No leads yet. Send a WhatsApp message to get started!</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = leads.map((l, i) => `
+      <tr>
+        <td style="color:var(--muted)">${i + 1}</td>
+        <td class="name-cell">${l.name || "—"}</td>
+        <td class="phone-cell">${l.phone || "—"}</td>
+        <td><span class="course-badge ${getCourseClass(l.course)}">${l.course || "General"}</span></td>
+        <td class="time-cell">${formatTime(l.timestamp)}</td>
+      </tr>
+    `).join("");
+  }
+
+  function updateStats(leads) {
+    document.getElementById("totalLeads").textContent = leads.length;
+
+    // Today's leads
+    const today = new Date().toDateString();
+    const todayCount = leads.filter(l => {
+      try { return new Date(l.timestamp).toDateString() === today; } catch { return false; }
+    }).length;
+    document.getElementById("todayLeads").textContent = todayCount;
+
+    // Top course
+    const courseCounts = {};
+    leads.forEach(l => {
+      const c = l.course || "General";
+      courseCounts[c] = (courseCounts[c] || 0) + 1;
+    });
+    const top = Object.entries(courseCounts).sort((a,b) => b[1]-a[1])[0];
+    document.getElementById("topCourse").textContent = top ? top[0].split(" ")[0] : "—";
+  }
+
+  function filterLeads() {
+    const q = document.getElementById("searchBox").value.toLowerCase();
+    const filtered = allLeads.filter(l =>
+      (l.name || "").toLowerCase().includes(q) ||
+      (l.phone || "").toLowerCase().includes(q) ||
+      (l.course || "").toLowerCase().includes(q)
+    );
+    renderLeads(filtered);
+  }
+
+  function exportCSV() {
+    if (!allLeads.length) return alert("No leads to export!");
+    const rows = [["Name","Phone","Course","Timestamp"]];
+    allLeads.forEach(l => rows.push([l.name, l.phone, l.course, l.timestamp]));
+    const csv  = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a    = document.createElement("a");
+    a.href     = URL.createObjectURL(blob);
+    a.download = "9faqs_leads.csv";
+    a.click();
+  }
+
+  // Load on start + auto-refresh every 30s
+  loadLeads();
+  setInterval(loadLeads, 30000);
+</script>
+</body>
+</html>
