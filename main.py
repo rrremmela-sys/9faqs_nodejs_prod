@@ -6,6 +6,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import urllib.request
 import urllib.parse
+import urllib.error
+import urllib.parse
 import json
 import os
 from datetime import datetime, timezone, timedelta
@@ -16,7 +18,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
-IST = timezone.utc  # Store as UTC, dashboard converts to IST
+IST = timezone(timedelta(hours=5, minutes=30))  # Indian Standard Time
 
 # ================================================================
 # 1. KNOWLEDGE BASE (Config-driven — change without touching code)
@@ -103,7 +105,7 @@ class Lead(Base):
     course    = Column(String)
     status    = Column(String, default="new")
     label     = Column(String, default="NEW")
-    timestamp = Column(DateTime, default=lambda: datetime.now(IST).replace(tzinfo=None))
+    timestamp = Column(DateTime, default=lambda: (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
 
 class Message(Base):
     __tablename__ = "messages"
@@ -112,7 +114,7 @@ class Message(Base):
     name      = Column(String)
     text      = Column(Text)
     direction = Column(String)
-    timestamp = Column(DateTime, default=lambda: datetime.now(IST).replace(tzinfo=None))
+    timestamp = Column(DateTime, default=lambda: (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
 
 class UserControl(Base):
     __tablename__ = "user_control"
@@ -154,7 +156,7 @@ Session = sessionmaker(bind=engine)
 def save_lead(phone, name, email, course):
     db = Session()
     lead = Lead(phone=phone, name=name, email=email, course=course,
-                status="enrolled", label="ENROLLED", timestamp=datetime.now(IST).replace(tzinfo=None))
+                status="enrolled", label="ENROLLED", timestamp=(datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
     db.merge(lead)
     db.commit()
     db.close()
@@ -162,7 +164,7 @@ def save_lead(phone, name, email, course):
 
 def save_message(phone, name, text, direction):
     db = Session()
-    now = datetime.now(IST).replace(tzinfo=None)  # store as naive IST
+    now = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)  # IST
     msg_id = f"{phone}_{now.timestamp()}"
     db.add(Message(id=msg_id, phone=phone, name=name,
                    text=text, direction=direction, timestamp=now))
@@ -248,10 +250,53 @@ def enrollment_done_msg(session):
             f"Type *Hi* to explore more courses.")
 
 # ================================================================
-# 6. MAIN MESSAGE HANDLER (State Machine)
+# 6. AI LAYER (Mock now → Real AI next)
+# ================================================================
+def call_ai(message: str) -> str:
+    """
+    AI response function.
+    Currently: Smart keyword-based mock
+    Next step: Replace with OpenAI / Pinecone RAG
+    """
+    msg = message.lower().strip()
+
+    # Course queries
+    if any(x in msg for x in ["what course", "which course", "courses available",
+                                "what do you offer", "what can i learn"]):
+        return course_list_msg()
+
+    if "best course" in msg or "recommend" in msg or "suggest" in msg:
+        return "Great question! 🤔\n\nFor beginners → 🐍 Python Basics\nFor future jobs → 🤖 AI for Beginners\nFor websites → 🌐 Web Development\nFor data jobs → 📊 Data Science\n\nType the course name to know more!"
+
+    if any(x in msg for x in ["learn coding", "learn programming", "start coding", "become developer"]):
+        return "🐍 *Python Basics* is the perfect start!\n\n✅ No prior experience needed\n✅ 4 weeks, ₹1999 only\n✅ Next batch: April 1\n\nReply *Enroll* to join!"
+
+    if any(x in msg for x in ["price", "cost", "fee", "how much", "fees"]):
+        return "💰 *Course Fees:*\n\n🐍 Python Basics — ₹1999\n🤖 AI for Beginners — ₹2999\n🌐 Web Development — ₹3999\n📊 Data Science — ₹4999\n\nAll include certificate + placement support!"
+
+    if any(x in msg for x in ["duration", "how long", "weeks", "months"]):
+        return "📅 *Course Durations:*\n\n🐍 Python Basics — 4 weeks\n🤖 AI for Beginners — 6 weeks\n🌐 Web Development — 8 weeks\n📊 Data Science — 10 weeks\n\nWeekend batches available!"
+
+    if any(x in msg for x in ["certificate", "placement", "job", "career"]):
+        return "🎓 Yes! All courses include:\n\n✅ Industry certificate\n✅ Placement assistance\n✅ Live projects\n✅ Mentor support\n\nType course name to know more!"
+
+    if any(x in msg for x in ["batch", "when", "start", "next batch"]):
+        return "🗓 *Upcoming Batches:*\n\n🐍 Python — April 1\n🤖 AI — April 5\n🌐 Web Dev — April 10\n📊 Data Science — April 15\n\nLimited seats! Reply *Enroll* to reserve."
+
+    if any(x in msg for x in ["contact", "call", "phone", "reach", "support"]):
+        return "📞 You can reach us at:\n\n📧 info@9faqs.com\n🌐 www.9faqs.com\n\nOr type *3* to talk to a counselor right now!"
+
+    if any(x in msg for x in ["thank", "thanks", "ok", "okay", "great", "good"]):
+        return "You're welcome! 😊\n\nType *Hi* anytime to explore courses or enroll!"
+
+    # No match → return None so fallback handles it
+    return None
+
+# 7. MAIN MESSAGE HANDLER (State Machine)
 # ================================================================
 def handle_message(text, phone):
-    msg     = text.lower().strip()
+    msg          = text.lower().strip()
+    text_original = text.strip()  # Keep original for Zeneral AI
     session = get_session(phone)
     step    = session["step"]
     data    = session["data"]
@@ -328,7 +373,14 @@ def handle_message(text, phone):
         session["fallback_count"] = 0
         return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
 
-    # ── SMART FALLBACK (Phase 5) ──
+    # ── AI LAYER ──
+    # If no menu option matched → try AI
+    ai_answer = call_ai(text_original)
+    if ai_answer:
+        session["fallback_count"] = 0
+        return ai_answer
+
+    # If Zeneral also fails → smart escalation
     session["fallback_count"] = session.get("fallback_count", 0) + 1
     if session["fallback_count"] >= 2:
         session["fallback_count"] = 0
