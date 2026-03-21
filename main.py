@@ -9,14 +9,39 @@ app = FastAPI()
 GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 
+# ================================
+# TEMPORARY LEAD STORAGE
+# ================================
+user_state = {}
+
 
 # ================================
 # CONVERSATION LOGIC
 # ================================
-def handle_message(msg):
+def handle_message(msg, phone):
     msg = msg.lower().strip()
 
+    # Initialize state for new user
+    if phone not in user_state:
+        user_state[phone] = {}
+    state = user_state[phone]
+
+    # ── Lead Capture Flow ──
+    if state.get("step") == "ask_name":
+        state["name"] = msg.title()
+        state["step"] = "ask_phone"
+        return f"Nice to meet you, {msg.title()}! 😊\nPlease share your *phone number* so we can contact you."
+
+    if state.get("step") == "ask_phone":
+        state["phone_number"] = msg
+        state["step"] = "done"
+        # Log the lead
+        print(f"🎯 NEW LEAD: Name={state['name']} | Phone={state['phone_number']} | WA={phone}")
+        return f"Thank you {state['name']}! 🎉\nOur team will contact you at {msg} shortly.\n\nType *Hi* to explore more courses."
+
+    # ── Menu Flow ──
     if any(x in msg for x in ["hi", "hello", "hey", "start"]):
+        state.clear()
         return """Welcome to 9faqs 👋
 
 Please choose an option:
@@ -60,7 +85,8 @@ Reply *Enroll* to join!"""
 Reply *Enroll* to join!"""
 
     elif "enroll" in msg:
-        return "Great choice! 🎉 Please share your *full name* to proceed."
+        state["step"] = "ask_name"
+        return "Great choice! 🎉\nPlease share your *full name* to proceed."
 
     elif "2" in msg or "counselor" in msg:
         return "📞 Connecting you to a counselor...\nOur team will reach out to you shortly!"
@@ -120,11 +146,11 @@ async def webhook(req: Request):
             user_message = msg["text"]["body"]
             print(f"📩 From {phone}: {user_message}")
 
-            reply = handle_message(user_message)
+            reply = handle_message(user_message, phone)
             send_reply(phone, reply)
 
         else:
-            send_reply(phone, "Sorry, I can only understand text messages. Please type Hi to start 👋")
+            send_reply(phone, "Sorry, I can only understand text messages. Type *Hi* to start 👋")
 
     except Exception as e:
         print(f"❌ Error: {e}")
