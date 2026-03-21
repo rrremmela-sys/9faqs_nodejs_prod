@@ -337,7 +337,9 @@ def handle_message(text, phone):
 
     # ── MENU FLOW ──
     # Reset / Welcome
-    if any(x in msg for x in ["hi", "hello", "hey", "start", "menu"]):
+    # Word boundary check to avoid matching "hi" inside "which", "this" etc.
+    msg_words = msg.split()
+    if any(x in msg_words for x in ["hi", "hello", "hey", "start", "menu"]):
         reset_session(phone)
         return BOT_CONFIG["welcome"]
 
