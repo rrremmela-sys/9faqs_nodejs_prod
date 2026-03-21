@@ -3,474 +3,397 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>9faqs Lead Dashboard</title>
+<title>9faqs Live Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0a0a0f;
-    --surface: #13131a;
-    --border: #1e1e2e;
-    --accent: #00ff88;
-    --accent2: #7c3aed;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --danger: #ff4757;
-  }
+:root {
+  --bg: #0a0a0f;
+  --surface: #13131a;
+  --surface2: #1a1a24;
+  --border: #1e1e2e;
+  --accent: #00ff88;
+  --accent2: #7c3aed;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --danger: #ff4757;
+  --warning: #fbbf24;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'DM Mono',monospace; height:100vh; overflow:hidden; display:flex; flex-direction:column; }
+body::before { content:''; position:fixed; inset:0; background-image: linear-gradient(rgba(0,255,136,0.02) 1px,transparent 1px), linear-gradient(90deg,rgba(0,255,136,0.02) 1px,transparent 1px); background-size:40px 40px; pointer-events:none; z-index:0; }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+/* Header */
+header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; border-bottom:1px solid var(--border); background:var(--surface); position:relative; z-index:10; flex-shrink:0; }
+.logo { display:flex; align-items:center; gap:10px; }
+.logo-icon { width:34px; height:34px; background:var(--accent); border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:800; font-size:14px; color:#000; }
+.logo h1 { font-family:'Syne',sans-serif; font-size:18px; font-weight:800; }
+.logo h1 span { color:var(--accent); }
+.header-right { display:flex; align-items:center; gap:16px; }
+.nav-tabs { display:flex; gap:4px; }
+.tab { padding:6px 14px; border-radius:8px; font-size:12px; cursor:pointer; border:1px solid transparent; transition:all 0.2s; color:var(--muted); }
+.tab.active { background:rgba(0,255,136,0.1); border-color:rgba(0,255,136,0.3); color:var(--accent); }
+.tab:hover:not(.active) { background:var(--surface2); color:var(--text); }
+.live-badge { display:flex; align-items:center; gap:6px; background:rgba(0,255,136,0.08); border:1px solid rgba(0,255,136,0.2); padding:5px 12px; border-radius:100px; font-size:11px; color:var(--accent); letter-spacing:1px; text-transform:uppercase; }
+.live-dot { width:6px; height:6px; background:var(--accent); border-radius:50%; animation:pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.8)} }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
+/* Main Layout */
+.main { display:flex; flex:1; overflow:hidden; position:relative; z-index:1; }
 
-  /* Animated background grid */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-  }
+/* Pages */
+.page { display:none; width:100%; }
+.page.active { display:flex; }
 
-  .container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 40px 24px;
-    position: relative;
-    z-index: 1;
-  }
+/* ── LEADS PAGE ── */
+#leadsPage { flex-direction:column; padding:24px; overflow-y:auto; }
+.stats { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:24px; }
+.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; position:relative; overflow:hidden; }
+.stat-card::after { content:''; position:absolute; top:0;left:0; width:3px;height:100%; background:var(--accent); border-radius:3px 0 0 3px; }
+.stat-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px; }
+.stat-value { font-family:'Syne',sans-serif; font-size:32px; font-weight:800; color:var(--accent); }
+.controls { display:flex; gap:10px; margin-bottom:18px; }
+.search-box { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:9px 14px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; outline:none; }
+.search-box:focus { border-color:var(--accent); }
+.search-box::placeholder { color:var(--muted); }
+.btn { background:var(--accent); color:#000; border:none; border-radius:8px; padding:9px 16px; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; cursor:pointer; transition:opacity 0.2s; white-space:nowrap; }
+.btn:hover { opacity:0.85; }
+.btn-outline { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+.btn-sm { padding:5px 12px; font-size:11px; border-radius:6px; }
+.btn-danger { background:var(--danger); color:#fff; }
+.table-wrap { background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+table { width:100%; border-collapse:collapse; }
+thead { background:rgba(0,255,136,0.04); border-bottom:1px solid var(--border); }
+th { padding:12px 16px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); }
+td { padding:14px 16px; font-size:12px; border-bottom:1px solid rgba(30,30,46,0.6); }
+tr:last-child td { border-bottom:none; }
+tr:hover td { background:rgba(0,255,136,0.02); }
+.name-cell { font-family:'Syne',sans-serif; font-weight:600; font-size:13px; }
+.phone-cell { color:var(--muted); }
+.course-badge { display:inline-block; padding:3px 10px; border-radius:100px; font-size:10px; }
+.course-python  { background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.2); }
+.course-ai      { background:rgba(124,58,237,0.15); color:#a78bfa; border:1px solid rgba(124,58,237,0.2); }
+.course-web     { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.2); }
+.course-general { background:rgba(100,116,139,0.15); color:#94a3b8; border:1px solid rgba(100,116,139,0.2); }
+.time-cell { color:var(--muted); font-size:11px; }
+.empty { text-align:center; padding:48px; color:var(--muted); }
 
-  /* Header */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 48px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid var(--border);
-  }
+/* ── CHAT PAGE ── */
+#chatPage { flex-direction:row; }
+.sidebar { width:300px; border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; background:var(--surface); }
+.sidebar-header { padding:16px; border-bottom:1px solid var(--border); }
+.sidebar-header h3 { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; margin-bottom:10px; }
+.conv-search { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; color:var(--text); font-family:'DM Mono',monospace; font-size:12px; outline:none; }
+.conv-search::placeholder { color:var(--muted); }
+.conv-list { flex:1; overflow-y:auto; }
+.conv-item { padding:14px 16px; border-bottom:1px solid var(--border); cursor:pointer; transition:background 0.15s; display:flex; gap:12px; align-items:flex-start; }
+.conv-item:hover { background:var(--surface2); }
+.conv-item.active { background:rgba(0,255,136,0.06); border-left:3px solid var(--accent); }
+.conv-avatar { width:36px; height:36px; border-radius:50%; background:var(--accent2); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:700; font-size:14px; color:#fff; flex-shrink:0; }
+.conv-info { flex:1; min-width:0; }
+.conv-name { font-family:'Syne',sans-serif; font-size:13px; font-weight:600; margin-bottom:3px; display:flex; align-items:center; gap:6px; }
+.conv-preview { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.human-badge { display:inline-block; padding:1px 6px; background:rgba(251,191,36,0.15); color:var(--warning); border:1px solid rgba(251,191,36,0.3); border-radius:4px; font-size:9px; letter-spacing:0.5px; }
+.bot-badge { display:inline-block; padding:1px 6px; background:rgba(0,255,136,0.1); color:var(--accent); border:1px solid rgba(0,255,136,0.2); border-radius:4px; font-size:9px; }
 
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .logo-icon {
-    width: 40px;
-    height: 40px;
-    background: var(--accent);
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 18px;
-    color: #000;
-  }
-
-  h1 {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 22px;
-    letter-spacing: -0.5px;
-  }
-
-  h1 span {
-    color: var(--accent);
-  }
-
-  .live-badge {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background: rgba(0,255,136,0.08);
-    border: 1px solid rgba(0,255,136,0.2);
-    padding: 6px 14px;
-    border-radius: 100px;
-    font-size: 12px;
-    color: var(--accent);
-    letter-spacing: 1px;
-    text-transform: uppercase;
-  }
-
-  .live-dot {
-    width: 7px;
-    height: 7px;
-    background: var(--accent);
-    border-radius: 50%;
-    animation: pulse 1.5s infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.4; transform: scale(0.8); }
-  }
-
-  /* Stats Row */
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-    margin-bottom: 36px;
-  }
-
-  .stat-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 24px;
-    position: relative;
-    overflow: hidden;
-    transition: border-color 0.2s;
-  }
-
-  .stat-card:hover { border-color: var(--accent); }
-
-  .stat-card::after {
-    content: '';
-    position: absolute;
-    top: 0; left: 0;
-    width: 3px; height: 100%;
-    background: var(--accent);
-    border-radius: 3px 0 0 3px;
-  }
-
-  .stat-label {
-    font-size: 11px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-bottom: 10px;
-  }
-
-  .stat-value {
-    font-family: 'Syne', sans-serif;
-    font-size: 36px;
-    font-weight: 800;
-    color: var(--accent);
-    line-height: 1;
-  }
-
-  /* Controls */
-  .controls {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 24px;
-    align-items: center;
-  }
-
-  .search-box {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 16px;
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .search-box:focus { border-color: var(--accent); }
-  .search-box::placeholder { color: var(--muted); }
-
-  .btn {
-    background: var(--accent);
-    color: #000;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 20px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 700;
-    font-size: 13px;
-    cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
-    white-space: nowrap;
-  }
-
-  .btn:hover { opacity: 0.85; }
-  .btn:active { transform: scale(0.97); }
-
-  .btn-outline {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-  }
-
-  /* Table */
-  .table-wrap {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    overflow: hidden;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  thead {
-    background: rgba(0,255,136,0.04);
-    border-bottom: 1px solid var(--border);
-  }
-
-  th {
-    padding: 14px 20px;
-    text-align: left;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: var(--muted);
-    font-weight: 500;
-  }
-
-  td {
-    padding: 16px 20px;
-    font-size: 13px;
-    border-bottom: 1px solid rgba(30,30,46,0.6);
-    transition: background 0.15s;
-  }
-
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: rgba(0,255,136,0.03); }
-
-  .name-cell {
-    font-family: 'Syne', sans-serif;
-    font-weight: 600;
-    font-size: 14px;
-  }
-
-  .phone-cell { color: var(--muted); }
-
-  .course-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 100px;
-    font-size: 11px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-  }
-
-  .course-python  { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.2); }
-  .course-ai      { background: rgba(124,58,237,0.15); color: #a78bfa; border: 1px solid rgba(124,58,237,0.2); }
-  .course-web     { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
-  .course-general { background: rgba(100,116,139,0.15); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
-
-  .time-cell { color: var(--muted); font-size: 12px; }
-
-  /* Empty state */
-  .empty {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--muted);
-  }
-
-  .empty-icon { font-size: 40px; margin-bottom: 12px; }
-  .empty p { font-size: 14px; }
-
-  /* Loading */
-  .loading {
-    text-align: center;
-    padding: 60px;
-    color: var(--accent);
-    font-size: 13px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  /* Footer */
-  footer {
-    margin-top: 32px;
-    text-align: center;
-    color: var(--muted);
-    font-size: 11px;
-    letter-spacing: 1px;
-  }
-
-  @media (max-width: 600px) {
-    .stats { grid-template-columns: 1fr; }
-    header { flex-direction: column; gap: 16px; align-items: flex-start; }
-    td, th { padding: 12px; }
-  }
+/* Chat Window */
+.chat-window { flex:1; display:flex; flex-direction:column; }
+.chat-header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; background:var(--surface); }
+.chat-header-info { display:flex; align-items:center; gap:12px; }
+.chat-avatar { width:38px; height:38px; border-radius:50%; background:var(--accent2); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:700; font-size:15px; color:#fff; }
+.chat-name { font-family:'Syne',sans-serif; font-size:15px; font-weight:700; }
+.chat-phone { font-size:11px; color:var(--muted); }
+.chat-actions { display:flex; gap:8px; }
+.messages { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:10px; }
+.msg { max-width:70%; padding:10px 14px; border-radius:12px; font-size:13px; line-height:1.5; }
+.msg.in { background:var(--surface2); border:1px solid var(--border); align-self:flex-start; border-bottom-left-radius:4px; }
+.msg.out { background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.2); color:var(--accent); align-self:flex-end; border-bottom-right-radius:4px; }
+.msg-time { font-size:10px; color:var(--muted); margin-top:4px; }
+.msg-sender { font-size:10px; color:var(--muted); margin-bottom:3px; }
+.chat-input-area { padding:16px 20px; border-top:1px solid var(--border); background:var(--surface); }
+.chat-input-row { display:flex; gap:10px; }
+.chat-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:10px 14px; color:var(--text); font-family:'DM Mono',monospace; font-size:13px; outline:none; resize:none; }
+.chat-input:focus { border-color:var(--accent); }
+.send-btn { background:var(--accent); color:#000; border:none; border-radius:10px; padding:10px 20px; font-family:'Syne',sans-serif; font-weight:700; cursor:pointer; }
+.no-chat { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:13px; flex-direction:column; gap:12px; }
+.no-chat-icon { font-size:40px; }
 </style>
 </head>
 <body>
-<div class="container">
 
-  <!-- Header -->
-  <header>
-    <div class="logo">
-      <div class="logo-icon">9F</div>
-      <h1>9faqs <span>Leads</span></h1>
-    </div>
-    <div class="live-badge">
-      <div class="live-dot"></div>
-      Live Dashboard
-    </div>
-  </header>
+<header>
+  <div class="logo">
+    <div class="logo-icon">9F</div>
+    <h1>9faqs <span>Dashboard</span></h1>
+  </div>
+  <div class="nav-tabs">
+    <div class="tab active" onclick="showPage('leads')">📊 Leads</div>
+    <div class="tab" onclick="showPage('chat')">💬 Live Chat</div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>Live</div>
+  </div>
+</header>
 
-  <!-- Stats -->
-  <div class="stats">
-    <div class="stat-card">
-      <div class="stat-label">Total Leads</div>
-      <div class="stat-value" id="totalLeads">—</div>
+<div class="main">
+
+  <!-- LEADS PAGE -->
+  <div class="page active" id="leadsPage">
+    <div class="stats">
+      <div class="stat-card"><div class="stat-label">Total Leads</div><div class="stat-value" id="totalLeads">—</div></div>
+      <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value" id="todayLeads">—</div></div>
+      <div class="stat-card"><div class="stat-label">Top Course</div><div class="stat-value" style="font-size:18px;margin-top:6px" id="topCourse">—</div></div>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Today</div>
-      <div class="stat-value" id="todayLeads">—</div>
+    <div class="controls">
+      <input class="search-box" id="searchBox" placeholder="Search name, phone, course..." oninput="filterLeads()">
+      <button class="btn btn-outline" onclick="loadLeads()">↻ Refresh</button>
+      <button class="btn" onclick="exportCSV()">↓ CSV</button>
     </div>
-    <div class="stat-card">
-      <div class="stat-label">Top Course</div>
-      <div class="stat-value" style="font-size:20px; margin-top:6px;" id="topCourse">—</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th>Phone</th><th>Course</th><th>Time</th></tr></thead>
+        <tbody id="leadsTable"><tr><td colspan="5"><div class="empty">Loading...</div></td></tr></tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Controls -->
-  <div class="controls">
-    <input class="search-box" id="searchBox" type="text" placeholder="Search by name, phone or course..." oninput="filterLeads()">
-    <button class="btn btn-outline" onclick="loadLeads()">↻ Refresh</button>
-    <button class="btn" onclick="exportCSV()">↓ Export CSV</button>
+  <!-- CHAT PAGE -->
+  <div class="page" id="chatPage">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h3>Conversations</h3>
+        <input class="conv-search" placeholder="Search..." oninput="filterConvs(this.value)">
+      </div>
+      <div class="conv-list" id="convList">
+        <div class="empty" style="padding:30px">No conversations yet</div>
+      </div>
+    </div>
+    <div class="chat-window" id="chatWindow">
+      <div class="no-chat"><div class="no-chat-icon">💬</div><span>Select a conversation</span></div>
+    </div>
   </div>
 
-  <!-- Table -->
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Name</th>
-          <th>Phone</th>
-          <th>Course</th>
-          <th>Time</th>
-        </tr>
-      </thead>
-      <tbody id="leadsTable">
-        <tr><td colspan="5"><div class="loading">Loading leads...</div></td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <footer>9faqs enrollment bot dashboard · auto-refreshes every 30s</footer>
 </div>
 
 <script>
-  // ── CONFIG ──
-  const API_URL = "https://ninefaqs-bot.onrender.com/leads";
+const API = "https://ninefaqs-bot.onrender.com";
+let allLeads = [];
+let allConvs = [];
+let activePhone = null;
+let ws = null;
 
-  let allLeads = [];
+// ── PAGES ──
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(page + 'Page').classList.add('active');
+  event.target.classList.add('active');
+  if (page === 'chat') loadConversations();
+  if (page === 'leads') loadLeads();
+}
 
-  async function loadLeads() {
-    try {
-      const res  = await fetch(API_URL);
-      const data = await res.json();
-      allLeads   = data.reverse(); // newest first
-      renderLeads(allLeads);
-      updateStats(allLeads);
-    } catch (e) {
-      document.getElementById("leadsTable").innerHTML =
-        `<tr><td colspan="5"><div class="empty"><div class="empty-icon">⚠️</div><p>Could not connect to API.<br>Make sure the bot server is running.</p></div></td></tr>`;
+// ── LEADS ──
+async function loadLeads() {
+  try {
+    const res  = await fetch(API + "/leads");
+    allLeads   = (await res.json()).reverse();
+    renderLeads(allLeads);
+    updateStats(allLeads);
+  } catch(e) {
+    document.getElementById("leadsTable").innerHTML = `<tr><td colspan="5"><div class="empty">⚠️ Could not load leads</div></td></tr>`;
+  }
+}
+
+function getCourseClass(c) {
+  if (!c) return "course-general";
+  c = c.toLowerCase();
+  if (c.includes("python")) return "course-python";
+  if (c.includes("ai"))     return "course-ai";
+  if (c.includes("web"))    return "course-web";
+  return "course-general";
+}
+
+function formatTime(ts) {
+  if (!ts) return "—";
+  try {
+    return new Date(ts).toLocaleString("en-IN", {
+      day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit",
+      hour12:true, timeZone:"Asia/Kolkata"
+    }) + " IST";
+  } catch { return ts; }
+}
+
+function renderLeads(leads) {
+  const tbody = document.getElementById("leadsTable");
+  if (!leads.length) { tbody.innerHTML = `<tr><td colspan="5"><div class="empty">📭 No leads yet</div></td></tr>`; return; }
+  tbody.innerHTML = leads.map((l,i) => `
+    <tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td class="name-cell">${l.name||"—"}</td>
+      <td class="phone-cell">${l.phone||"—"}</td>
+      <td><span class="course-badge ${getCourseClass(l.course)}">${l.course||"General"}</span></td>
+      <td class="time-cell">${formatTime(l.timestamp)}</td>
+    </tr>`).join("");
+}
+
+function updateStats(leads) {
+  document.getElementById("totalLeads").textContent = leads.length;
+  const today = new Date().toDateString();
+  const todayCount = leads.filter(l => { try { return new Date(l.timestamp).toDateString()===today; } catch{return false;} }).length;
+  document.getElementById("todayLeads").textContent = todayCount;
+  const cc = {};
+  leads.forEach(l => { const c=l.course||"General"; cc[c]=(cc[c]||0)+1; });
+  const top = Object.entries(cc).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById("topCourse").textContent = top ? top[0].split(" ")[0] : "—";
+}
+
+function filterLeads() {
+  const q = document.getElementById("searchBox").value.toLowerCase();
+  renderLeads(allLeads.filter(l =>
+    (l.name||"").toLowerCase().includes(q) ||
+    (l.phone||"").toLowerCase().includes(q) ||
+    (l.course||"").toLowerCase().includes(q)
+  ));
+}
+
+function exportCSV() {
+  if (!allLeads.length) return alert("No leads!");
+  const rows = [["Name","Phone","Course","Timestamp"], ...allLeads.map(l=>[l.name,l.phone,l.course,l.timestamp])];
+  const csv  = rows.map(r=>r.join(",")).join("\n");
+  const a    = document.createElement("a");
+  a.href     = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download = "9faqs_leads.csv";
+  a.click();
+}
+
+// ── CONVERSATIONS ──
+async function loadConversations() {
+  try {
+    const res = await fetch(API + "/conversations");
+    allConvs  = await res.json();
+    renderConvs(allConvs);
+  } catch(e) { console.error(e); }
+}
+
+function renderConvs(convs) {
+  const list = document.getElementById("convList");
+  if (!convs.length) { list.innerHTML = `<div class="empty" style="padding:30px">No conversations yet</div>`; return; }
+  list.innerHTML = convs.map(c => `
+    <div class="conv-item ${c.phone===activePhone?'active':''}" onclick="openChat('${c.phone}','${(c.name||c.phone).replace(/'/g,"\\'")}',${c.is_human})">
+      <div class="conv-avatar">${(c.name||"?")[0].toUpperCase()}</div>
+      <div class="conv-info">
+        <div class="conv-name">
+          ${c.name||c.phone}
+          ${c.is_human ? '<span class="human-badge">HUMAN</span>' : '<span class="bot-badge">BOT</span>'}
+        </div>
+        <div class="conv-preview">${c.last_message||""}</div>
+      </div>
+    </div>`).join("");
+}
+
+function filterConvs(q) {
+  renderConvs(allConvs.filter(c =>
+    (c.name||"").toLowerCase().includes(q.toLowerCase()) ||
+    c.phone.includes(q)
+  ));
+}
+
+async function openChat(phone, name, isHuman) {
+  activePhone = phone;
+  loadConversations();
+  const res  = await fetch(`${API}/messages/${phone}`);
+  const msgs = await res.json();
+
+  document.getElementById("chatWindow").innerHTML = `
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <div class="chat-avatar">${name[0].toUpperCase()}</div>
+        <div>
+          <div class="chat-name">${name}</div>
+          <div class="chat-phone">${phone}</div>
+        </div>
+      </div>
+      <div class="chat-actions">
+        ${isHuman
+          ? `<button class="btn btn-sm btn-outline" onclick="handback('${phone}')">🤖 Hand to Bot</button>`
+          : `<button class="btn btn-sm" style="background:var(--warning);color:#000" onclick="takeover('${phone}')">👤 Take Over</button>`
+        }
+      </div>
+    </div>
+    <div class="messages" id="msgList">
+      ${msgs.map(m => `
+        <div>
+          <div class="msg-sender">${m.direction==='in'?name:'Bot/Agent'}</div>
+          <div class="msg ${m.direction}">${m.text.replace(/\n/g,'<br>')}</div>
+          <div class="msg-time">${formatTime(m.timestamp)}</div>
+        </div>`).join("")}
+    </div>
+    <div class="chat-input-area" id="inputArea" style="${isHuman?'':'opacity:0.4;pointer-events:none'}">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        ${isHuman ? '✅ Human mode — you are replying' : '🤖 Bot is handling — click Take Over to reply manually'}
+      </div>
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="replyInput" rows="2" placeholder="Type your reply..."></textarea>
+        <button class="send-btn" onclick="sendReply('${phone}')">Send</button>
+      </div>
+    </div>`;
+
+  // Scroll to bottom
+  const msgList = document.getElementById("msgList");
+  if (msgList) msgList.scrollTop = msgList.scrollHeight;
+}
+
+async function takeover(phone) {
+  await fetch(`${API}/takeover/${phone}`, {method:"POST"});
+  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, true);
+  loadConversations();
+}
+
+async function handback(phone) {
+  await fetch(`${API}/handback/${phone}`, {method:"POST"});
+  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, false);
+  loadConversations();
+}
+
+async function sendReply(phone) {
+  const input = document.getElementById("replyInput");
+  const msg   = input.value.trim();
+  if (!msg) return;
+  input.value = "";
+  await fetch(`${API}/reply/${phone}`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({message: msg})
+  });
+  openChat(phone, document.querySelector('.chat-name')?.textContent||phone, true);
+}
+
+// ── WEBSOCKET for real-time ──
+function connectWS() {
+  const wsUrl = API.replace("https://","wss://").replace("http://","ws://") + "/ws";
+  ws = new WebSocket(wsUrl);
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "new_message") {
+      // Refresh conversations list
+      loadConversations();
+      // If chat is open for this phone, refresh it
+      if (activePhone === data.phone) {
+        const name = document.querySelector('.chat-name')?.textContent || data.phone;
+        const isHuman = data.direction === "out" && data.name === "Agent";
+        openChat(data.phone, name, isHuman);
+      }
     }
-  }
+  };
 
-  function getCourseClass(course) {
-    if (!course) return "course-general";
-    const c = course.toLowerCase();
-    if (c.includes("python")) return "course-python";
-    if (c.includes("ai"))     return "course-ai";
-    if (c.includes("web"))    return "course-web";
-    return "course-general";
-  }
+  ws.onclose = () => setTimeout(connectWS, 3000); // reconnect
+}
 
-  function formatTime(ts) {
-    if (!ts) return "—";
-    try {
-      // Timestamp from SQLite is local time already, just format it
-      const d = new Date(ts);
-      // If invalid, try parsing manually
-      if (isNaN(d)) return ts;
-      return d.toLocaleString("en-IN", {
-        day: "2-digit", month: "short",
-        hour: "2-digit", minute: "2-digit",
-        hour12: true,
-        timeZone: "Asia/Kolkata"
-      }) + " IST";
-    } catch { return ts; }
-  }
-
-  function renderLeads(leads) {
-    const tbody = document.getElementById("leadsTable");
-    if (!leads.length) {
-      tbody.innerHTML = `<tr><td colspan="5"><div class="empty"><div class="empty-icon">📭</div><p>No leads yet. Send a WhatsApp message to get started!</p></div></td></tr>`;
-      return;
-    }
-    tbody.innerHTML = leads.map((l, i) => `
-      <tr>
-        <td style="color:var(--muted)">${i + 1}</td>
-        <td class="name-cell">${l.name || "—"}</td>
-        <td class="phone-cell">${l.phone || "—"}</td>
-        <td><span class="course-badge ${getCourseClass(l.course)}">${l.course || "General"}</span></td>
-        <td class="time-cell">${formatTime(l.timestamp)}</td>
-      </tr>
-    `).join("");
-  }
-
-  function updateStats(leads) {
-    document.getElementById("totalLeads").textContent = leads.length;
-
-    // Today's leads
-    const today = new Date().toDateString();
-    const todayCount = leads.filter(l => {
-      try { return new Date(l.timestamp).toDateString() === today; } catch { return false; }
-    }).length;
-    document.getElementById("todayLeads").textContent = todayCount;
-
-    // Top course
-    const courseCounts = {};
-    leads.forEach(l => {
-      const c = l.course || "General";
-      courseCounts[c] = (courseCounts[c] || 0) + 1;
-    });
-    const top = Object.entries(courseCounts).sort((a,b) => b[1]-a[1])[0];
-    document.getElementById("topCourse").textContent = top ? top[0].split(" ")[0] : "—";
-  }
-
-  function filterLeads() {
-    const q = document.getElementById("searchBox").value.toLowerCase();
-    const filtered = allLeads.filter(l =>
-      (l.name || "").toLowerCase().includes(q) ||
-      (l.phone || "").toLowerCase().includes(q) ||
-      (l.course || "").toLowerCase().includes(q)
-    );
-    renderLeads(filtered);
-  }
-
-  function exportCSV() {
-    if (!allLeads.length) return alert("No leads to export!");
-    const rows = [["Name","Phone","Course","Timestamp"]];
-    allLeads.forEach(l => rows.push([l.name, l.phone, l.course, l.timestamp]));
-    const csv  = rows.map(r => r.join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a    = document.createElement("a");
-    a.href     = URL.createObjectURL(blob);
-    a.download = "9faqs_leads.csv";
-    a.click();
-  }
-
-  // Load on start + auto-refresh every 30s
-  loadLeads();
-  setInterval(loadLeads, 30000);
+// ── INIT ──
+loadLeads();
+connectWS();
+setInterval(loadLeads, 30000);
+setInterval(() => { if(document.getElementById('chatPage').classList.contains('active')) loadConversations(); }, 5000);
 </script>
 </body>
 </html>
