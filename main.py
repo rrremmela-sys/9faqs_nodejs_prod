@@ -1,8 +1,12 @@
 from fastapi import FastAPI, Request
+from sqlalchemy import create_engine, Column, String, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 import urllib.request
 import urllib.parse
 import json
 import os
+from datetime import datetime
 
 app = FastAPI()
 
@@ -10,7 +14,32 @@ GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 
 # ================================
-# TEMPORARY LEAD STORAGE
+# DATABASE SETUP
+# ================================
+engine = create_engine("sqlite:///leads.db")
+Base   = declarative_base()
+
+class Lead(Base):
+    __tablename__ = "leads"
+    phone     = Column(String, primary_key=True)
+    name      = Column(String)
+    course    = Column(String)
+    timestamp = Column(DateTime, default=datetime.now)
+
+Base.metadata.create_all(engine)
+Session = sessionmaker(bind=engine)
+
+def save_lead(phone, name, course):
+    session = Session()
+    lead = Lead(phone=phone, name=name, course=course, timestamp=datetime.now())
+    session.merge(lead)
+    session.commit()
+    session.close()
+    print(f"💾 Lead saved: {name} | {phone} | {course}")
+
+
+# ================================
+# TEMPORARY STATE STORAGE
 # ================================
 user_state = {}
 
@@ -21,7 +50,6 @@ user_state = {}
 def handle_message(msg, phone):
     msg = msg.lower().strip()
 
-    # Initialize state for new user
     if phone not in user_state:
         user_state[phone] = {}
     state = user_state[phone]
@@ -33,11 +61,12 @@ def handle_message(msg, phone):
         return f"Nice to meet you, {msg.title()}! 😊\nPlease share your *phone number* so we can contact you."
 
     if state.get("step") == "ask_phone":
-        state["phone_number"] = msg
+        name   = state.get("name", "Friend")
+        course = state.get("course", "General")
         state["step"] = "done"
-        # Log the lead
-        print(f"🎯 NEW LEAD: Name={state['name']} | Phone={state['phone_number']} | WA={phone}")
-        return f"Thank you {state['name']}! 🎉\nOur team will contact you at {msg} shortly.\n\nType *Hi* to explore more courses."
+        # Save to database
+        save_lead(phone, name, course)
+        return f"Thank you {name}! 🎉\nYou are enrolled in *{course}*.\nOur team will contact you at {msg} shortly.\n\nType *Hi* to explore more courses."
 
     # ── Menu Flow ──
     if any(x in msg for x in ["hi", "hello", "hey", "start"]):
@@ -58,6 +87,7 @@ Please choose an option:
 Reply with the course name to know more!"""
 
     elif "python" in msg:
+        state["course"] = "Python Basics"
         return """🐍 Python Basics:
 
 📅 Duration: 4 weeks
@@ -67,6 +97,7 @@ Reply with the course name to know more!"""
 Reply *Enroll* to join!"""
 
     elif "ai" in msg:
+        state["course"] = "AI for Beginners"
         return """🤖 AI for Beginners:
 
 📅 Duration: 6 weeks
@@ -76,6 +107,7 @@ Reply *Enroll* to join!"""
 Reply *Enroll* to join!"""
 
     elif "web" in msg:
+        state["course"] = "Web Development"
         return """🌐 Web Development:
 
 📅 Duration: 8 weeks
@@ -99,6 +131,25 @@ Please choose:
 2️⃣ Talk to Counselor
 
 Or type *Hi* to start over."""
+
+
+# ================================
+# VIEW ALL LEADS (Admin endpoint)
+# ================================
+@app.get("/leads")
+def get_leads():
+    session = Session()
+    leads = session.query(Lead).all()
+    session.close()
+    return [
+        {
+            "phone": l.phone,
+            "name": l.name,
+            "course": l.course,
+            "timestamp": str(l.timestamp)
+        }
+        for l in leads
+    ]
 
 
 # ================================
@@ -145,10 +196,8 @@ async def webhook(req: Request):
         if msg_type == "text":
             user_message = msg["text"]["body"]
             print(f"📩 From {phone}: {user_message}")
-
             reply = handle_message(user_message, phone)
             send_reply(phone, reply)
-
         else:
             send_reply(phone, "Sorry, I can only understand text messages. Type *Hi* to start 👋")
 
