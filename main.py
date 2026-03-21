@@ -8,7 +8,9 @@ import urllib.request
 import urllib.parse
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 app = FastAPI()
 
@@ -33,7 +35,7 @@ Session = sessionmaker(bind=engine)
 
 def save_lead(phone, name, course):
     session = Session()
-    lead = Lead(phone=phone, name=name, course=course, timestamp=datetime.now())
+    lead = Lead(phone=phone, name=name, course=course, timestamp=datetime.now(IST))
     session.merge(lead)
     session.commit()
     session.close()

@@ -396,13 +396,15 @@
   function formatTime(ts) {
     if (!ts) return "—";
     try {
-      // Convert UTC to IST (+5:30)
-      const d = new Date(ts + "Z"); // treat as UTC
-      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
-      return ist.toLocaleString("en-IN", {
+      // Timestamp from SQLite is local time already, just format it
+      const d = new Date(ts);
+      // If invalid, try parsing manually
+      if (isNaN(d)) return ts;
+      return d.toLocaleString("en-IN", {
         day: "2-digit", month: "short",
         hour: "2-digit", minute: "2-digit",
-        hour12: true
+        hour12: true,
+        timeZone: "Asia/Kolkata"
       }) + " IST";
     } catch { return ts; }
   }
