@@ -367,9 +367,10 @@ def handle_message(text, phone):
         session["fallback_count"] = 0
         return f"Great choice! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
 
-    # Talk to counselor
-    if msg in ["3", "counselor", "human", "agent", "help", "talk"] and step != "pick_course":
+    # Talk to counselor — always available regardless of step
+    if msg in ["3", "counselor", "human", "agent", "help", "talk to counselor", "talk"]:
         set_human_mode(phone, True)
+        reset_session(phone)
         session["fallback_count"] = 0
         return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
 
