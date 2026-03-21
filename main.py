@@ -1,4 +1,6 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, String, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -64,7 +66,6 @@ def handle_message(msg, phone):
         name   = state.get("name", "Friend")
         course = state.get("course", "General")
         state["step"] = "done"
-        # Save to database
         save_lead(phone, name, course)
         return f"Thank you {name}! 🎉\nYou are enrolled in *{course}*.\nOur team will contact you at {msg} shortly.\n\nType *Hi* to explore more courses."
 
@@ -134,25 +135,6 @@ Or type *Hi* to start over."""
 
 
 # ================================
-# VIEW ALL LEADS (Admin endpoint)
-# ================================
-@app.get("/leads")
-def get_leads():
-    session = Session()
-    leads = session.query(Lead).all()
-    session.close()
-    return [
-        {
-            "phone": l.phone,
-            "name": l.name,
-            "course": l.course,
-            "timestamp": str(l.timestamp)
-        }
-        for l in leads
-    ]
-
-
-# ================================
 # SEND WHATSAPP REPLY
 # ================================
 def send_reply(phone, message):
@@ -177,6 +159,24 @@ def send_reply(phone, message):
 def home():
     return {"message": "9faqs Enrollment Bot is running ✅"}
 
+@app.get("/dashboard")
+def dashboard():
+    return FileResponse("dashboard.html")
+
+@app.get("/leads")
+def get_leads():
+    session = Session()
+    leads = session.query(Lead).all()
+    session.close()
+    return [
+        {
+            "phone": l.phone,
+            "name": l.name,
+            "course": l.course,
+            "timestamp": str(l.timestamp)
+        }
+        for l in leads
+    ]
 
 @app.post("/webhook")
 async def webhook(req: Request):
