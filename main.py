@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 import urllib.request
 import urllib.parse
 import urllib.error
+from openai import OpenAI
 import urllib.parse
 import json
 import os
@@ -19,6 +20,28 @@ GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
 IST = timezone(timedelta(hours=5, minutes=30))  # Indian Standard Time
+
+# ── OpenAI Client ──
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+SYSTEM_PROMPT = """You are a helpful assistant for 9faqs, an online learning platform.
+
+Available courses:
+1. Python Basics — 4 weeks, ₹1999, next batch April 1
+2. AI for Beginners — 6 weeks, ₹2999, next batch April 5
+3. Web Development — 8 weeks, ₹3999, next batch April 10
+4. Data Science — 10 weeks, ₹4999, next batch April 15
+
+All courses include: certificate, placement support, live projects, mentor support.
+
+Your job:
+- Answer questions about courses clearly
+- Suggest the right course based on user interest
+- Encourage enrollment
+- Keep answers SHORT (max 3-4 lines) — this is WhatsApp
+- If user wants to enroll → tell them to type 'Hi' to start
+- Never make up information not listed above
+"""
 
 # ================================================================
 # 1. KNOWLEDGE BASE (Config-driven — change without touching code)
@@ -254,43 +277,25 @@ def enrollment_done_msg(session):
 # ================================================================
 def call_ai(message: str) -> str:
     """
-    AI response function.
-    Currently: Smart keyword-based mock
-    Next step: Replace with OpenAI / Pinecone RAG
+    Real OpenAI-powered AI function.
+    Falls back gracefully if API fails.
     """
-    msg = message.lower().strip()
-
-    # Course queries
-    if any(x in msg for x in ["what course", "which course", "courses available",
-                                "what do you offer", "what can i learn"]):
-        return course_list_msg()
-
-    if "best course" in msg or "recommend" in msg or "suggest" in msg:
-        return "Great question! 🤔\n\nFor beginners → 🐍 Python Basics\nFor future jobs → 🤖 AI for Beginners\nFor websites → 🌐 Web Development\nFor data jobs → 📊 Data Science\n\nType the course name to know more!"
-
-    if any(x in msg for x in ["learn coding", "learn programming", "start coding", "become developer"]):
-        return "🐍 *Python Basics* is the perfect start!\n\n✅ No prior experience needed\n✅ 4 weeks, ₹1999 only\n✅ Next batch: April 1\n\nReply *Enroll* to join!"
-
-    if any(x in msg for x in ["price", "cost", "fee", "how much", "fees"]):
-        return "💰 *Course Fees:*\n\n🐍 Python Basics — ₹1999\n🤖 AI for Beginners — ₹2999\n🌐 Web Development — ₹3999\n📊 Data Science — ₹4999\n\nAll include certificate + placement support!"
-
-    if any(x in msg for x in ["duration", "how long", "weeks", "months"]):
-        return "📅 *Course Durations:*\n\n🐍 Python Basics — 4 weeks\n🤖 AI for Beginners — 6 weeks\n🌐 Web Development — 8 weeks\n📊 Data Science — 10 weeks\n\nWeekend batches available!"
-
-    if any(x in msg for x in ["certificate", "placement", "job", "career"]):
-        return "🎓 Yes! All courses include:\n\n✅ Industry certificate\n✅ Placement assistance\n✅ Live projects\n✅ Mentor support\n\nType course name to know more!"
-
-    if any(x in msg for x in ["batch", "when", "start", "next batch"]):
-        return "🗓 *Upcoming Batches:*\n\n🐍 Python — April 1\n🤖 AI — April 5\n🌐 Web Dev — April 10\n📊 Data Science — April 15\n\nLimited seats! Reply *Enroll* to reserve."
-
-    if any(x in msg for x in ["contact", "call", "phone", "reach", "support"]):
-        return "📞 You can reach us at:\n\n📧 info@9faqs.com\n🌐 www.9faqs.com\n\nOr type *3* to talk to a counselor right now!"
-
-    if any(x in msg for x in ["thank", "thanks", "ok", "okay", "great", "good"]):
-        return "You're welcome! 😊\n\nType *Hi* anytime to explore courses or enroll!"
-
-    # No match → return None so fallback handles it
-    return None
+    try:
+        response = openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": message}
+            ],
+            max_tokens=150,      # Keep answers short for WhatsApp
+            temperature=0.7
+        )
+        answer = response.choices[0].message.content.strip()
+        print(f"🤖 OpenAI: {answer[:80]}...")
+        return answer
+    except Exception as e:
+        print(f"⚠️ OpenAI error: {e}")
+        return None  # Falls through to default fallback
 
 # 7. MAIN MESSAGE HANDLER (State Machine)
 # ================================================================
@@ -342,8 +347,8 @@ def handle_message(text, phone):
         set_step(phone, "pick_course")
         return course_list_msg()
 
-    # Pick course by number (1-4) after seeing list
-    if step == "pick_course" or msg in ["1","2","3","4"]:
+    # Pick course by number (1-4) ONLY when in pick_course step
+    if step == "pick_course":
         course_keys = list(COURSES.keys())
         course_map  = {str(i+1): key for i, key in enumerate(course_keys)}
         if msg in course_map:
@@ -352,6 +357,8 @@ def handle_message(text, phone):
             set_step(phone, None)
             session["fallback_count"] = 0
             return course_detail_msg(key)
+        # If not a valid course number while in pick_course
+        return "Please reply with a number 1-4 to select a course 👆"
 
     # Course details by name
     for key in COURSES:
