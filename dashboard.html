@@ -396,8 +396,14 @@
   function formatTime(ts) {
     if (!ts) return "—";
     try {
-      const d = new Date(ts);
-      return d.toLocaleString("en-IN", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+      // Convert UTC to IST (+5:30)
+      const d = new Date(ts + "Z"); // treat as UTC
+      const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+      return ist.toLocaleString("en-IN", {
+        day: "2-digit", month: "short",
+        hour: "2-digit", minute: "2-digit",
+        hour12: true
+      }) + " IST";
     } catch { return ts; }
   }
 
