@@ -11,24 +11,84 @@ import os
 from datetime import datetime, timezone, timedelta
 
 app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
-
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# ================================
-# DATABASE SETUP
-# ================================
-# Fix for SQLAlchemy + PostgreSQL on Render
+# ================================================================
+# 1. KNOWLEDGE BASE (Config-driven — change without touching code)
+# ================================================================
+COURSES = {
+    "python": {"name": "Python Basics",     "duration": "4 weeks",  "price": "₹1999", "batch": "April 1",  "emoji": "🐍"},
+    "ai":     {"name": "AI for Beginners",  "duration": "6 weeks",  "price": "₹2999", "batch": "April 5",  "emoji": "🤖"},
+    "web":    {"name": "Web Development",   "duration": "8 weeks",  "price": "₹3999", "batch": "April 10", "emoji": "🌐"},
+    "data":   {"name": "Data Science",      "duration": "10 weeks", "price": "₹4999", "batch": "April 15", "emoji": "📊"},
+}
+
+BOT_CONFIG = {
+    "name":     "9faqs",
+    "welcome":  "👋 *Welcome to 9faqs!*\n\nWe offer industry-ready tech courses.\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor",
+    "fallback": "Sorry, I didn't understand 🤔\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr type *Hi* to restart.",
+}
+
+# ================================================================
+# 2. STATE MACHINE ENGINE
+# ================================================================
+# Each state has:
+#   - message  : what bot asks
+#   - validate : optional validation function
+#   - next     : next state after valid input
+#   - save_as  : key to save user's answer in session data
+
+ENROLLMENT_FLOW = {
+    "ask_name": {
+        "message":  "Please share your *full name*:",
+        "save_as":  "name",
+        "next":     "ask_email",
+        "validate": None,
+    },
+    "ask_email": {
+        "message":  "Please share your *email address*:",
+        "save_as":  "email",
+        "next":     "ask_phone",
+        "validate": lambda v: "@" in v and "." in v,
+        "error":    "Please enter a valid email 📧 (e.g. name@gmail.com)",
+    },
+    "ask_phone": {
+        "message":  "Please share your *contact number*:",
+        "save_as":  "contact",
+        "next":     "done",
+        "validate": lambda v: v.replace(" ","").replace("+","").isdigit() and len(v) >= 8,
+        "error":    "Please enter a valid phone number 📱",
+    },
+}
+
+# Session store: { phone: { "step": "ask_name", "data": { "name": ..., "course": ... } } }
+sessions = {}
+
+def get_session(phone):
+    if phone not in sessions:
+        sessions[phone] = {"step": None, "data": {}, "fallback_count": 0}
+    return sessions[phone]
+
+def reset_session(phone):
+    sessions[phone] = {"step": None, "data": {}, "fallback_count": 0}
+
+def set_step(phone, step):
+    sessions[phone]["step"] = step
+
+def save_to_session(phone, key, value):
+    sessions[phone]["data"][key] = value
+
+def get_from_session(phone, key, default=None):
+    return sessions[phone]["data"].get(key, default)
+
+# ================================================================
+# 3. DATABASE
+# ================================================================
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
@@ -39,206 +99,225 @@ class Lead(Base):
     __tablename__ = "leads"
     phone     = Column(String, primary_key=True)
     name      = Column(String)
+    email     = Column(String)
     course    = Column(String)
+    status    = Column(String, default="new")
+    label     = Column(String, default="NEW")
     timestamp = Column(DateTime, default=lambda: datetime.now(IST))
 
 class Message(Base):
     __tablename__ = "messages"
-    id         = Column(String, primary_key=True)
-    phone      = Column(String)
-    name       = Column(String)
-    text       = Column(Text)
-    direction  = Column(String)  # "in" or "out"
-    timestamp  = Column(DateTime, default=lambda: datetime.now(IST))
+    id        = Column(String, primary_key=True)
+    phone     = Column(String)
+    name      = Column(String)
+    text      = Column(Text)
+    direction = Column(String)
+    timestamp = Column(DateTime, default=lambda: datetime.now(IST))
 
 class UserControl(Base):
     __tablename__ = "user_control"
-    phone      = Column(String, primary_key=True)
-    is_human   = Column(Boolean, default=False)  # True = human takeover
+    phone    = Column(String, primary_key=True)
+    is_human = Column(Boolean, default=False)
+    tag      = Column(String, default="")
 
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
-
-# ================================
-# WEBSOCKET MANAGER
-# ================================
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, data: dict):
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(data)
-            except:
-                pass
-
-manager = ConnectionManager()
-
-
-# ================================
-# DB HELPERS
-# ================================
-def save_lead(phone, name, course):
-    session = Session()
-    lead = Lead(phone=phone, name=name, course=course, timestamp=datetime.now(IST))
-    session.merge(lead)
-    session.commit()
-    session.close()
-    print(f"💾 Lead saved: {name} | {phone} | {course}")
+def save_lead(phone, name, email, course):
+    db = Session()
+    lead = Lead(phone=phone, name=name, email=email, course=course,
+                status="enrolled", label="ENROLLED", timestamp=datetime.now(IST))
+    db.merge(lead)
+    db.commit()
+    db.close()
+    print(f"💾 LEAD: {name} | {email} | {course}")
 
 def save_message(phone, name, text, direction):
-    session = Session()
+    db = Session()
     msg_id = f"{phone}_{datetime.now(IST).timestamp()}"
-    msg = Message(id=msg_id, phone=phone, name=name, text=text,
-                  direction=direction, timestamp=datetime.now(IST))
-    session.add(msg)
-    session.commit()
-    session.close()
+    db.add(Message(id=msg_id, phone=phone, name=name,
+                   text=text, direction=direction, timestamp=datetime.now(IST)))
+    db.commit()
+    db.close()
 
 def is_human_mode(phone):
-    session = Session()
-    ctrl = session.query(UserControl).filter_by(phone=phone).first()
-    session.close()
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    db.close()
     return ctrl.is_human if ctrl else False
 
 def set_human_mode(phone, value: bool):
-    session = Session()
-    ctrl = session.query(UserControl).filter_by(phone=phone).first()
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
     if not ctrl:
         ctrl = UserControl(phone=phone, is_human=value)
-        session.add(ctrl)
+        db.add(ctrl)
     else:
         ctrl.is_human = value
-    session.commit()
-    session.close()
+    db.commit()
+    db.close()
 
-
-# ================================
-# TEMPORARY STATE STORAGE
-# ================================
-user_state = {}
-
-
-# ================================
-# CONVERSATION LOGIC
-# ================================
-def handle_message(msg, phone):
-    msg = msg.lower().strip()
-
-    if phone not in user_state:
-        user_state[phone] = {}
-    state = user_state[phone]
-
-    if state.get("step") == "ask_name":
-        state["name"] = msg.title()
-        state["step"] = "ask_phone"
-        return f"Nice to meet you, {msg.title()}! 😊\nPlease share your *phone number* so we can contact you."
-
-    if state.get("step") == "ask_phone":
-        name   = state.get("name", "Friend")
-        course = state.get("course", "General")
-        state["step"] = "done"
-        save_lead(phone, name, course)
-        return f"Thank you {name}! 🎉\nYou are enrolled in *{course}*.\nOur team will contact you at {msg} shortly.\n\nType *Hi* to explore more courses."
-
-    if any(x in msg for x in ["hi", "hello", "hey", "start"]):
-        state.clear()
-        return """Welcome to 9faqs 👋
-
-Please choose an option:
-1️⃣ View Courses
-2️⃣ Talk to Counselor"""
-
-    elif "1" in msg or "course" in msg:
-        return """📚 Available Courses:
-
-1. Python Basics
-2. AI for Beginners
-3. Web Development
-
-Reply with the course name to know more!"""
-
-    elif "python" in msg:
-        state["course"] = "Python Basics"
-        return """🐍 Python Basics:
-
-📅 Duration: 4 weeks
-💰 Price: ₹1999
-🗓 Next batch: March 25
-
-Reply *Enroll* to join!"""
-
-    elif "ai" in msg:
-        state["course"] = "AI for Beginners"
-        return """🤖 AI for Beginners:
-
-📅 Duration: 6 weeks
-💰 Price: ₹2999
-🗓 Next batch: April 1
-
-Reply *Enroll* to join!"""
-
-    elif "web" in msg:
-        state["course"] = "Web Development"
-        return """🌐 Web Development:
-
-📅 Duration: 8 weeks
-💰 Price: ₹3999
-🗓 Next batch: April 5
-
-Reply *Enroll* to join!"""
-
-    elif "enroll" in msg:
-        state["step"] = "ask_name"
-        return "Great choice! 🎉\nPlease share your *full name* to proceed."
-
-    elif "2" in msg or "counselor" in msg:
-        set_human_mode(phone, True)
-        return "📞 Connecting you to a counselor...\nA human agent will reply shortly!"
-
+def update_label(phone, label):
+    db = Session()
+    lead = db.query(Lead).filter_by(phone=phone).first()
+    if lead:
+        lead.label = label
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    if not ctrl:
+        ctrl = UserControl(phone=phone, tag=label)
+        db.add(ctrl)
     else:
-        return """Sorry, I didn't understand that 🙏
+        ctrl.tag = label
+    db.commit()
+    db.close()
 
-Please choose:
-1️⃣ View Courses
-2️⃣ Talk to Counselor
+# ================================================================
+# 4. WEBSOCKET
+# ================================================================
+class ConnectionManager:
+    def __init__(self):
+        self.connections = []
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.connections.append(ws)
+    def disconnect(self, ws: WebSocket):
+        if ws in self.connections:
+            self.connections.remove(ws)
+    async def broadcast(self, data: dict):
+        for conn in self.connections:
+            try: await conn.send_json(data)
+            except: pass
 
-Or type *Hi* to start over."""
+manager = ConnectionManager()
 
+# ================================================================
+# 5. BOT RESPONSE BUILDER
+# ================================================================
+def course_list_msg():
+    lines = ["📚 *Available Courses:*\n"]
+    for i, (_, c) in enumerate(COURSES.items(), 1):
+        lines.append(f"{i}. {c['emoji']} {c['name']} — {c['price']}")
+    lines.append("\nReply with course name to know more!")
+    return "\n".join(lines)
 
-# ================================
-# SEND WHATSAPP REPLY
-# ================================
-def send_reply(phone, message):
-    url = "https://api.gupshup.io/sm/api/v1/msg"
+def course_detail_msg(key):
+    c = COURSES[key]
+    return (f"{c['emoji']} *{c['name']}*\n\n"
+            f"📅 Duration: {c['duration']}\n"
+            f"💰 Price: {c['price']}\n"
+            f"🗓 Next batch: {c['batch']}\n\n"
+            f"Reply *Enroll* to join!")
+
+def enrollment_done_msg(session):
+    d = session["data"]
+    return (f"✅ *Enrollment Confirmed!*\n\n"
+            f"👤 Name: {d.get('name','—')}\n"
+            f"📧 Email: {d.get('email','—')}\n"
+            f"📱 Phone: {d.get('contact','—')}\n"
+            f"📚 Course: {d.get('course','—')}\n\n"
+            f"Our team will contact you within 24 hours! 🎉\n\n"
+            f"Type *Hi* to explore more courses.")
+
+# ================================================================
+# 6. MAIN MESSAGE HANDLER (State Machine)
+# ================================================================
+def handle_message(text, phone):
+    msg     = text.lower().strip()
+    session = get_session(phone)
+    step    = session["step"]
+    data    = session["data"]
+
+    # ── ACTIVE ENROLLMENT FLOW ──
+    if step in ENROLLMENT_FLOW:
+        flow = ENROLLMENT_FLOW[step]
+
+        # Validate input
+        validator = flow.get("validate")
+        if validator and not validator(text):
+            return flow.get("error", "Invalid input. Please try again.")
+
+        # Save answer
+        save_to_session(phone, flow["save_as"], text.strip())
+
+        # Move to next step
+        next_step = flow["next"]
+        set_step(phone, next_step)
+
+        # If flow complete
+        if next_step == "done":
+            name   = get_from_session(phone, "name", "Friend")
+            email  = get_from_session(phone, "email", "")
+            course = get_from_session(phone, "course", "General")
+            save_lead(phone, name, email, course)
+            reply  = enrollment_done_msg(session)
+            reset_session(phone)
+            return reply
+
+        # Ask next question
+        return ENROLLMENT_FLOW[next_step]["message"]
+
+    # ── MENU FLOW ──
+    # Reset / Welcome
+    if any(x in msg for x in ["hi", "hello", "hey", "start", "menu"]):
+        reset_session(phone)
+        return BOT_CONFIG["welcome"]
+
+    # View courses
+    if msg in ["1", "courses", "course", "view courses", "view"]:
+        session["fallback_count"] = 0
+        return course_list_msg()
+
+    # Course details
+    for key in COURSES:
+        if key in msg:
+            save_to_session(phone, "course", COURSES[key]["name"])
+            session["fallback_count"] = 0
+            return course_detail_msg(key)
+
+    # Start enrollment
+    if msg in ["2", "enroll", "enroll now", "join", "register"]:
+        set_step(phone, "ask_name")
+        session["fallback_count"] = 0
+        return f"Great choice! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
+
+    # Talk to counselor
+    if msg in ["3", "counselor", "human", "agent", "help", "talk"]:
+        set_human_mode(phone, True)
+        session["fallback_count"] = 0
+        return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
+
+    # ── SMART FALLBACK (Phase 5) ──
+    session["fallback_count"] = session.get("fallback_count", 0) + 1
+    if session["fallback_count"] >= 2:
+        session["fallback_count"] = 0
+        set_human_mode(phone, True)
+        return "🙏 Let me connect you to a human agent who can help better!\n\nPlease wait..."
+
+    return BOT_CONFIG["fallback"]
+
+# ================================================================
+# 7. SEND WHATSAPP
+# ================================================================
+def send_whatsapp(phone, message):
+    url    = "https://api.gupshup.io/sm/api/v1/msg"
     params = urllib.parse.urlencode({
-        "channel": "whatsapp",
-        "source": GUPSHUP_NUMBER,
+        "channel":   "whatsapp",
+        "source":    GUPSHUP_NUMBER,
         "destination": phone,
-        "src.name": "9faqsbot",
-        "message": json.dumps({"type": "text", "text": message})
+        "src.name":  "9faqsbot",
+        "message":   json.dumps({"type": "text", "text": message})
     }).encode()
     req = urllib.request.Request(url, data=params)
     req.add_header("apikey", GUPSHUP_API_KEY)
     urllib.request.urlopen(req)
-    print(f"✅ Reply sent to {phone}: {message[:50]}...")
+    print(f"✅ Sent → {phone}: {message[:60]}...")
 
-
-# ================================
-# ROUTES
-# ================================
+# ================================================================
+# 8. API ROUTES
+# ================================================================
 @app.get("/")
 def home():
-    return {"message": "9faqs Bot running ✅"}
+    return {"status": "9faqs Bot v3.0 ✅", "flows": list(ENROLLMENT_FLOW.keys())}
 
 @app.get("/dashboard")
 def dashboard():
@@ -246,42 +325,38 @@ def dashboard():
 
 @app.get("/leads")
 def get_leads():
-    session = Session()
-    leads = session.query(Lead).all()
-    session.close()
-    return [{"phone": l.phone, "name": l.name, "course": l.course,
+    db    = Session()
+    leads = db.query(Lead).order_by(Lead.timestamp.desc()).all()
+    db.close()
+    return [{"phone": l.phone, "name": l.name, "email": l.email,
+             "course": l.course, "status": l.status, "label": l.label,
              "timestamp": str(l.timestamp)} for l in leads]
 
 @app.get("/conversations")
 def get_conversations():
-    session = Session()
-    # Get unique phones with latest message
-    messages = session.query(Message).order_by(Message.timestamp.desc()).all()
-    session.close()
+    db   = Session()
+    msgs = db.query(Message).order_by(Message.timestamp.desc()).all()
+    db.close()
     seen = {}
-    for m in messages:
+    for m in msgs:
         if m.phone not in seen:
-            seen[m.phone] = {
-                "phone": m.phone,
-                "name": m.name,
-                "last_message": m.text,
-                "timestamp": str(m.timestamp),
-                "is_human": is_human_mode(m.phone)
-            }
+            seen[m.phone] = {"phone": m.phone, "name": m.name,
+                             "last_message": m.text, "timestamp": str(m.timestamp),
+                             "is_human": is_human_mode(m.phone)}
     return list(seen.values())
 
 @app.get("/messages/{phone}")
 def get_messages(phone: str):
-    session = Session()
-    msgs = session.query(Message).filter_by(phone=phone)\
-                  .order_by(Message.timestamp.asc()).all()
-    session.close()
+    db   = Session()
+    msgs = db.query(Message).filter_by(phone=phone).order_by(Message.timestamp.asc()).all()
+    db.close()
     return [{"text": m.text, "direction": m.direction,
-             "timestamp": str(m.timestamp)} for m in msgs]
+             "timestamp": str(m.timestamp), "name": m.name} for m in msgs]
 
 @app.post("/takeover/{phone}")
 async def takeover(phone: str):
     set_human_mode(phone, True)
+    update_label(phone, "HOT LEAD")
     await manager.broadcast({"type": "takeover", "phone": phone})
     return {"status": "human mode on"}
 
@@ -293,21 +368,25 @@ async def handback(phone: str):
 
 @app.post("/reply/{phone}")
 async def agent_reply(phone: str, req: Request):
-    body = await req.json()
+    body    = await req.json()
     message = body.get("message", "")
     if message:
-        send_reply(phone, message)
+        send_whatsapp(phone, message)
         save_message(phone, "Agent", message, "out")
-        await manager.broadcast({
-            "type": "new_message",
-            "phone": phone,
-            "text": message,
-            "direction": "out"
-        })
+        await manager.broadcast({"type": "new_message", "phone": phone,
+                                  "text": message, "direction": "out", "name": "Agent"})
     return {"status": "sent"}
 
+@app.post("/tag/{phone}")
+async def tag_lead(phone: str, req: Request):
+    body = await req.json()
+    tag  = body.get("tag", "")
+    update_label(phone, tag)
+    await manager.broadcast({"type": "tag_update", "phone": phone, "tag": tag})
+    return {"status": "tagged"}
+
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def ws_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
@@ -319,56 +398,35 @@ async def websocket_endpoint(websocket: WebSocket):
 async def webhook(req: Request):
     data = await req.json()
     print("INCOMING:", data)
-
     try:
         messages = data["entry"][0]["changes"][0]["value"].get("messages", [])
         contacts = data["entry"][0]["changes"][0]["value"].get("contacts", [])
-
         if not messages:
             return {"status": "ok"}
 
-        msg      = messages[0]
-        msg_type = msg.get("type", "")
-        phone    = msg["from"]
-        name     = contacts[0]["profile"]["name"] if contacts else phone
+        msg   = messages[0]
+        phone = msg["from"]
+        name  = contacts[0]["profile"]["name"] if contacts else phone
 
-        if msg_type == "text":
-            user_message = msg["text"]["body"]
-            print(f"📩 From {name} ({phone}): {user_message}")
+        if msg.get("type") == "text":
+            text = msg["text"]["body"]
+            print(f"📩 {name} ({phone}): {text}")
+            save_message(phone, name, text, "in")
+            await manager.broadcast({"type": "new_message", "phone": phone,
+                                     "name": name, "text": text, "direction": "in"})
 
-            # Save incoming message
-            save_message(phone, name, user_message, "in")
-
-            # Broadcast to dashboard
-            await manager.broadcast({
-                "type": "new_message",
-                "phone": phone,
-                "name": name,
-                "text": user_message,
-                "direction": "in"
-            })
-
-            # Check if human has taken over
             if is_human_mode(phone):
-                print(f"👤 Human mode active for {phone} — skipping bot reply")
+                print(f"👤 Human mode active — skipping bot for {phone}")
                 return {"status": "ok"}
 
-            # Bot reply
-            reply = handle_message(user_message, phone)
-            send_reply(phone, reply)
+            reply = handle_message(text, phone)
+            send_whatsapp(phone, reply)
             save_message(phone, "Bot", reply, "out")
-
-            await manager.broadcast({
-                "type": "new_message",
-                "phone": phone,
-                "name": "Bot",
-                "text": reply,
-                "direction": "out"
-            })
-
+            await manager.broadcast({"type": "new_message", "phone": phone,
+                                     "name": "Bot", "text": reply, "direction": "out"})
         else:
             if not is_human_mode(phone):
-                send_reply(phone, "Sorry, I can only understand text messages. Type *Hi* to start 👋")
+                send_whatsapp(phone, "Sorry, I only understand text. Type *Hi* to start 👋")
 
     except Exception as e:
         print(f"❌ Error: {e}")
