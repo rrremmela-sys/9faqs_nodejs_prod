@@ -16,7 +16,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
-IST = timezone(timedelta(hours=5, minutes=30))
+IST = timezone.utc  # Store as UTC, dashboard converts to IST
 
 # ================================================================
 # 1. KNOWLEDGE BASE (Config-driven — change without touching code)
@@ -103,7 +103,7 @@ class Lead(Base):
     course    = Column(String)
     status    = Column(String, default="new")
     label     = Column(String, default="NEW")
-    timestamp = Column(DateTime, default=lambda: datetime.now(IST))
+    timestamp = Column(DateTime, default=lambda: datetime.now(IST).replace(tzinfo=None))
 
 class Message(Base):
     __tablename__ = "messages"
@@ -112,7 +112,7 @@ class Message(Base):
     name      = Column(String)
     text      = Column(Text)
     direction = Column(String)
-    timestamp = Column(DateTime, default=lambda: datetime.now(IST))
+    timestamp = Column(DateTime, default=lambda: datetime.now(IST).replace(tzinfo=None))
 
 class UserControl(Base):
     __tablename__ = "user_control"
@@ -154,7 +154,7 @@ Session = sessionmaker(bind=engine)
 def save_lead(phone, name, email, course):
     db = Session()
     lead = Lead(phone=phone, name=name, email=email, course=course,
-                status="enrolled", label="ENROLLED", timestamp=datetime.now(IST))
+                status="enrolled", label="ENROLLED", timestamp=datetime.now(IST).replace(tzinfo=None))
     db.merge(lead)
     db.commit()
     db.close()
@@ -162,9 +162,10 @@ def save_lead(phone, name, email, course):
 
 def save_message(phone, name, text, direction):
     db = Session()
-    msg_id = f"{phone}_{datetime.now(IST).timestamp()}"
+    now = datetime.now(IST).replace(tzinfo=None)  # store as naive IST
+    msg_id = f"{phone}_{now.timestamp()}"
     db.add(Message(id=msg_id, phone=phone, name=name,
-                   text=text, direction=direction, timestamp=datetime.now(IST)))
+                   text=text, direction=direction, timestamp=now))
     db.commit()
     db.close()
 
