@@ -16,8 +16,10 @@ from datetime import datetime, timezone, timedelta
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
-GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
+GUPSHUP_API_KEY  = os.getenv("GUPSHUP_API_KEY")
+GUPSHUP_NUMBER   = os.getenv("GUPSHUP_NUMBER")
+WHATSAPP_TOKEN   = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID  = os.getenv("PHONE_NUMBER_ID", "1074621342402018")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
 IST = timezone(timedelta(hours=5, minutes=30))  # Indian Standard Time
 
@@ -403,18 +405,25 @@ def handle_message(text, phone):
 # 7. SEND WHATSAPP
 # ================================================================
 def send_whatsapp(phone, message):
-    url    = "https://api.gupshup.io/sm/api/v1/msg"
-    params = urllib.parse.urlencode({
-        "channel":   "whatsapp",
-        "source":    GUPSHUP_NUMBER,
-        "destination": phone,
-        "src.name":  "9faqsbot",
-        "message":   json.dumps({"type": "text", "text": message})
-    }).encode()
-    req = urllib.request.Request(url, data=params)
-    req.add_header("apikey", GUPSHUP_API_KEY)
-    urllib.request.urlopen(req)
-    print(f"✅ Sent → {phone}: {message[:60]}...")
+    """Send via Gupshup WA API (Cloud API mode)"""
+    try:
+        url = "https://api.gupshup.io/wa/api/v1/msg"
+        params = urllib.parse.urlencode({
+            "channel":     "whatsapp",
+            "source":      GUPSHUP_NUMBER,
+            "destination": phone,
+            "src.name":    "9faqsbot",
+            "message":     json.dumps({"type": "text", "text": message})
+        }).encode()
+        req = urllib.request.Request(url, data=params)
+        req.add_header("apikey", GUPSHUP_API_KEY)
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with urllib.request.urlopen(req) as res:
+            response = res.read().decode()
+            print(f"✅ SENT → {phone}: {message[:60]}...")
+            print(f"   Response: {response}")
+    except Exception as e:
+        print(f"❌ Send error: {e}")
 
 # ================================================================
 # 8. API ROUTES
