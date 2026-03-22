@@ -6,4 +6,4 @@ psycopg2-binary
 aiofiles
 websockets
 openai
-pinecone-client
+pinecone==3.0.0
