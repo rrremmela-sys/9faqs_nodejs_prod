@@ -82,9 +82,11 @@ def search_knowledge_base(question, index_name, top_k=5):
             return ""
 
         # Create embedding for question
+        # dimensions=512 must match your Pinecone index
         embedding = client.embeddings.create(
             model="text-embedding-3-small",
-            input=question
+            input=question,
+            dimensions=512
         ).data[0].embedding
 
         # Search Pinecone

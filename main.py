@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from openai import OpenAI
+from pinecone import Pinecone
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -408,58 +409,102 @@ def enrollment_done_msg(session, client):
 # ================================================================
 # AI LAYER
 # ================================================================
-def get_rag_context(question: str, top_k: int = 3) -> str:
-    """Search Pinecone for relevant context"""
+def get_rag_context(question: str, top_k: int = 5) -> str:
+    """Search Pinecone for relevant context.
+
+    Metadata keys match what upload_to_pinecone.py stores: title, category, text
+    Embedding dimensions must match the Pinecone index (512).
+    """
     if not pindex or not openai_client:
         return ""
     try:
-        # Create embedding for question
+        # ── Embed the question (dimensions MUST match Pinecone index) ──
         emb_response = openai_client.embeddings.create(
             model="text-embedding-3-small",
-            input=question
+            input=question,
+            dimensions=512          # ← must match PINECONE index dimension
         )
         embedding = emb_response.data[0].embedding
 
-        # Search Pinecone
+        # ── Search Pinecone ──
         results = pindex.query(
             vector=embedding,
             top_k=top_k,
             include_metadata=True
         )
 
-        # Build context from results
-        context_parts = []
+        # ── Build context from results ──
+        # Score threshold: 0.2 works well for 512-dim cosine similarity
+        SCORE_THRESHOLD = 0.2
+        context_parts   = []
         for match in results["matches"]:
-            if match["score"] > 0.3:  # Only use relevant results
-                meta = match["metadata"]
-                context_parts.append(
-                    "Topic: " + meta.get("name","") + "\n" + meta.get("context","")
-                )
+            if match["score"] > SCORE_THRESHOLD:
+                meta  = match["metadata"]
+                title = meta.get("title", "")     # ← correct key (was "name")
+                text  = meta.get("text",  "")     # ← correct key (was "context")
+                if text:
+                    context_parts.append(f"[{title}]\n{text}")
 
         context = "\n\n---\n\n".join(context_parts)
-        print(f"🔍 RAG: found {len(context_parts)} relevant chunks (score>{0.3})")
+        print(f"🔍 RAG: {len(context_parts)}/{top_k} chunks matched (score>{SCORE_THRESHOLD})")
+        if context_parts:
+            print(f"   Top match: '{context_parts[0][:80]}...'")
         return context
+
     except Exception as e:
         print(f"⚠️ RAG error: {e}")
         return ""
 
 def call_ai(message: str, client: dict) -> str:
-    """RAG-powered AI response using Pinecone + OpenAI"""
+    """RAG-powered AI response using Pinecone + OpenAI.
+
+    Flow:
+      1. Embed the question and search Pinecone for relevant chunks
+      2. Inject retrieved context into the system prompt
+      3. Call GPT — constrained to ONLY use the provided context
+      4. Return None if answer is empty, too long, or AI fails
+         (caller will fall back to flow-based reply)
+    """
     if not openai_client:
         return None
+
+    # ── Guard: ignore very short/meaningless inputs ──────────────
+    if len(message.strip()) < 3:
+        return None
+
+    print(f"🧠 AI question: '{message}'")
+
     try:
-        # Step 1: Get relevant context from Pinecone
-        context = get_rag_context(message)
+        # ── Step 1: Retrieve context from Pinecone ────────────────
+        context      = get_rag_context(message)
+        base_prompt  = client.get("system_prompt", "You are a helpful assistant.")
 
-        # Step 2: Build prompt with context
-        base_prompt = client.get("system_prompt", "You are a helpful assistant.")
-
+        # ── Step 2: Build system prompt ───────────────────────────
         if context:
-            system_prompt = base_prompt + "\n\nUse the following knowledge base context to answer accurately:\n\n" + context + "\n\nIf the answer is not in the context, use your general knowledge but stay focused on the business."
+            system_prompt = (
+                base_prompt
+                + "\n\n"
+                + "=== KNOWLEDGE BASE CONTEXT ===\n"
+                + context
+                + "\n=== END CONTEXT ===\n\n"
+                + "RULES:\n"
+                + "- Answer ONLY using the context above.\n"
+                + "- If the answer is not in the context, say: \"I'm not sure about that. Type *Hi* to explore our courses or *3* to talk to our team.\"\n"
+                + "- Keep answers SHORT — 2 to 3 lines max. This is WhatsApp.\n"
+                + "- Never make up prices, dates, or course details.\n"
+                + "- Always end with a call to action (enroll, type Hi, talk to team)."
+            )
+            print(f"   Context: {len(context)} chars injected into prompt")
         else:
-            system_prompt = base_prompt
+            # No RAG context — use base prompt only, be conservative
+            system_prompt = (
+                base_prompt
+                + "\n\nNote: No knowledge base context found for this question."
+                + " Keep your answer very short and suggest the user type 'Hi' or contact the team."
+            )
+            print("   Context: none found — using base prompt only")
 
-        # Step 3: Get OpenAI response
+        # ── Step 3: Call GPT ──────────────────────────────────────
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -467,13 +512,21 @@ def call_ai(message: str, client: dict) -> str:
                 {"role": "user",   "content": message}
             ],
             max_tokens=200,
-            temperature=0.5
+            temperature=0.3     # lower = more factual, less creative
         )
         answer = response.choices[0].message.content.strip()
-        if not answer or len(answer) > 500:
+
+        # ── Step 4: Validate answer ───────────────────────────────
+        if not answer:
+            print("   AI returned empty answer")
             return None
-        print(f"🤖 RAG Answer: {answer[:80]}...")
+        if len(answer) > 600:
+            print(f"   AI answer too long ({len(answer)} chars) — discarding")
+            return None
+
+        print(f"🤖 AI reply: '{answer[:100]}...'")
         return answer
+
     except Exception as e:
         print(f"⚠️ AI error: {e}")
         return None
