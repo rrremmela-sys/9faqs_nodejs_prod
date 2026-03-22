@@ -27,7 +27,7 @@ CLIENT_ID       = os.getenv("CLIENT_ID", "9faqs")   # ← change per deployment
 
 openai_client  = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "zeneral-kb")
+PINECONE_INDEX   = os.getenv("PINECONE_INDEX_9FAQS", os.getenv("PINECONE_INDEX", "9faqs-kb"))
 
 # Initialize Pinecone
 try:
