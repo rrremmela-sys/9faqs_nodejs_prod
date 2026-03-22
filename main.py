@@ -5,7 +5,11 @@ from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from openai import OpenAI
-from pinecone import Pinecone
+try:
+    from pinecone import Pinecone
+except ImportError:
+    Pinecone = None
+    print("⚠️ pinecone not installed — RAG disabled")
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -31,9 +35,14 @@ PINECONE_INDEX   = os.getenv("PINECONE_INDEX_9FAQS", os.getenv("PINECONE_INDEX",
 
 # Initialize Pinecone
 try:
-    pc    = Pinecone(api_key=PINECONE_API_KEY) if PINECONE_API_KEY else None
-    pindex = pc.Index(PINECONE_INDEX) if pc else None
-    print(f"✅ Pinecone connected: {PINECONE_INDEX}")
+    if Pinecone and PINECONE_API_KEY:
+        pc     = Pinecone(api_key=PINECONE_API_KEY)
+        pindex = pc.Index(PINECONE_INDEX)
+        print(f"✅ Pinecone connected: {PINECONE_INDEX}")
+    else:
+        pc     = None
+        pindex = None
+        print("⚠️ Pinecone disabled — RAG will not work")
 except Exception as e:
     print(f"⚠️ Pinecone init failed: {e}")
     pc     = None
