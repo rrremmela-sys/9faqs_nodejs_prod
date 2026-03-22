@@ -5,7 +5,6 @@ from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from openai import OpenAI
-from pinecone import Pinecone
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -48,8 +47,10 @@ def now_ist():
 from clients_config import CLIENTS, get_client as _get_client
 
 def get_client(client_id=None):
-    cid = client_id or CLIENT_ID
-    return _get_client(cid)
+    cid    = client_id or CLIENT_ID
+    client = _get_client(cid)
+    client["id"] = cid   # Inject id so call_ai knows which client
+    return client
 
 # ================================================================
 # DATABASE
