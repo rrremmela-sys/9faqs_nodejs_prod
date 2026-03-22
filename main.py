@@ -226,6 +226,26 @@ def save_message(phone, name, text_content, direction, client_id=None):
                    text=text_content, direction=direction, timestamp=now_ist()))
     db.commit()
     db.close()
+    # Auto-capture partial lead on first inbound message
+    if direction == "in":
+        capture_partial_lead(phone, name, cid)
+
+def capture_partial_lead(phone, name, cid):
+    """Save whoever messages us — even if they never complete enrollment"""
+    db   = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
+    if not lead:
+        # New visitor — save with name from WhatsApp profile
+        lead = Lead(phone=phone, client_id=cid, name=name,
+                    status="NEW", label="NEW", timestamp=now_ist())
+        db.add(lead)
+        db.commit()
+        print(f"👤 [{cid}] Partial lead captured: {name} ({phone})")
+    elif lead.name == phone and name != phone:
+        # Update name if we only had phone number before
+        lead.name = name
+        db.commit()
+    db.close()
 
 def get_ctrl(phone, client_id=None):
     cid = client_id or CLIENT_ID
