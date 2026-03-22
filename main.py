@@ -132,8 +132,7 @@ Base   = declarative_base()
 
 class Lead(Base):
     __tablename__ = "leads"
-    id         = Column(String, primary_key=True)   # phone + client_id
-    phone      = Column(String)
+    phone      = Column(String, primary_key=True)
     client_id  = Column(String, default="9faqs")
     name       = Column(String, default="")
     email      = Column(String, default="")
@@ -144,7 +143,7 @@ class Lead(Base):
 
 class Message(Base):
     __tablename__ = "messages"
-    id         = Column(String, primary_key=True)
+    id         = Column(String, primary_key=True)   # timestamp-based unique id
     phone      = Column(String)
     client_id  = Column(String, default="9faqs")
     name       = Column(String, default="")
@@ -154,8 +153,7 @@ class Message(Base):
 
 class UserControl(Base):
     __tablename__ = "user_control"
-    id         = Column(String, primary_key=True)   # phone + client_id
-    phone      = Column(String)
+    phone      = Column(String, primary_key=True)
     client_id  = Column(String, default="9faqs")
     is_human   = Column(Boolean, default=False)
     is_new     = Column(Boolean, default=True)
@@ -196,7 +194,7 @@ def make_id(phone, client_id=None):
 def save_lead(phone, name, email, course, client_id=None):
     cid = client_id or CLIENT_ID
     db  = Session()
-    lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+    lead = Lead(phone=phone, client_id=cid,
                 name=name, email=email, course=course,
                 status="ENROLLED", label="ENROLLED", timestamp=now_ist())
     db.merge(lead)
@@ -209,7 +207,7 @@ def upsert_lead_interest(phone, course, client_id=None):
     db  = Session()
     lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
     if not lead:
-        lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+        lead = Lead(phone=phone, client_id=cid,
                     name=phone, course=course, status="INTERESTED",
                     label="INTERESTED", timestamp=now_ist())
         db.add(lead)
@@ -249,8 +247,7 @@ def mark_user_seen(phone, client_id=None):
     db  = Session()
     ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
-                           client_id=cid, is_new=False)
+        ctrl = UserControl(phone=phone, client_id=cid, is_new=False)
         db.add(ctrl)
     else:
         ctrl.is_new = False
@@ -262,8 +259,7 @@ def set_human_mode(phone, value: bool, client_id=None):
     db  = Session()
     ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
-                           client_id=cid, is_human=value)
+        ctrl = UserControl(phone=phone, client_id=cid, is_human=value)
         db.add(ctrl)
     else:
         ctrl.is_human = value
@@ -275,7 +271,7 @@ def update_lead_status(phone, status, client_id=None):
     db  = Session()
     lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
     if not lead:
-        lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+        lead = Lead(phone=phone, client_id=cid,
                     name=phone, status=status, label=status, timestamp=now_ist())
         db.add(lead)
     else:
@@ -283,8 +279,7 @@ def update_lead_status(phone, status, client_id=None):
         lead.label  = status
     ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
-                           client_id=cid, tag=status)
+        ctrl = UserControl(phone=phone, client_id=cid, tag=status)
         db.add(ctrl)
     else:
         ctrl.tag = status
