@@ -58,6 +58,7 @@ class Lead(Base):
     label              = Column(String, default="NEW")
     timestamp          = Column(DateTime, default=now_ist)
     last_followup_sent = Column(DateTime, nullable=True)
+    last_seen          = Column(DateTime, nullable=True)
     last_seen  = Column(DateTime, default=now_ist)
 
 class Message(Base):
