@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text, Integer
+from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from openai import OpenAI
@@ -22,85 +22,104 @@ GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
 GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
+CLIENT_ID       = os.getenv("CLIENT_ID", "9faqs")   # ← change per deployment
 
-openai_client   = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 def now_ist():
     return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
 
 # ================================================================
-# KNOWLEDGE BASE (from 9faqs.com)
+# MULTI-CLIENT CONFIG
 # ================================================================
-COURSES = {
-    "crash_course": {
-        "name": "Python Crash Course", "price": "₹1999",
-        "duration": "Weekend (Sat & Sun, 10AM–4PM)", "emoji": "🐍",
-        "level": "Beginner–Intermediate", "certificate": True,
-        "highlights": ["Live instructor-led", "AI tools intro", "Git & Jira", "Interview prep"],
-        "url": "https://9faqs.com/training/python_crash_course"
-    },
-    "bootcamp": {
-        "name": "Python Bootcamp", "price": "Contact for pricing",
-        "duration": "90 days (Mon–Fri, 12PM–6PM) + 3mo internship", "emoji": "🚀",
-        "level": "Beginner–Advanced", "certificate": True, "internship": True,
-        "highlights": ["Cloud lab support", "Hands-on projects", "Career prep", "Mock interviews"],
-        "url": "https://9faqs.com/training/python_bootcamp"
-    },
-    "ai_workshop": {
-        "name": "AI Workshop", "price": "₹1999",
-        "duration": "4-hour live workshop", "emoji": "🤖",
-        "level": "No coding required", "certificate": False,
-        "highlights": ["Build website with AI", "ChatGPT + Cursor IDE", "Domain & hosting setup", "1-1 post support"],
-        "url": "https://9faqs.com/training/ai_workshops"
-    },
-    "python_faqs": {
-        "name": "Python FAQs (Self-Learn)", "price": "Free",
-        "duration": "Self-paced", "emoji": "📚",
-        "level": "All levels", "certificate": False,
-        "highlights": ["1736+ Python questions", "Adaptive learning", "Interview prep"],
-        "url": "https://9faqs.com/python"
-    },
-}
+CLIENTS = {
+    "9faqs": {
+        "name":         "9faqs",
+        "welcome":      "👋 *Welcome to 9faqs!*\n\nYour gateway to tech careers 🚀\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr just ask me anything!",
+        "fallback":     "I'm not sure about that 🤔\n\nType *Hi* to see our courses or *3* to talk to a counselor.",
+        "enroll_url":   "https://9faqs.com/enroll",
+        "support_msg":  "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳",
+        "catalog_label":"Courses",
+        "catalog": {
+            "crash_course": {
+                "name": "Python Crash Course", "price": "₹1999",
+                "duration": "Weekend (Sat & Sun, 10AM–4PM)", "emoji": "🐍",
+                "description": "Fast-track live Python training with AI tools intro.",
+                "url": "https://9faqs.com/training/python_crash_course"
+            },
+            "bootcamp": {
+                "name": "Python Bootcamp", "price": "Contact us",
+                "duration": "90 days Mon–Fri + internship", "emoji": "🚀",
+                "description": "Beginner to advanced Python with cloud lab & career prep.",
+                "url": "https://9faqs.com/training/python_bootcamp"
+            },
+            "ai_workshop": {
+                "name": "AI Workshop", "price": "₹1999",
+                "duration": "4-hour live workshop", "emoji": "🤖",
+                "description": "Build a website using AI tools. No coding needed.",
+                "url": "https://9faqs.com/training/ai_workshops"
+            },
+            "python_faqs": {
+                "name": "Python FAQs (Free)", "price": "Free",
+                "duration": "Self-paced", "emoji": "📚",
+                "description": "1736+ Python interview questions with adaptive learning.",
+                "url": "https://9faqs.com/python"
+            },
+        },
+        "system_prompt": """You are a helpful WhatsApp assistant for 9faqs (https://9faqs.com), an online tech learning platform in India.
 
-GENERAL_FAQS = [
-    {"q": "best for beginners",     "a": "🚀 Python Bootcamp is best for complete beginners — 90 days with cloud lab + internship. For a quick start, try the weekend Crash Course (₹1999)."},
-    {"q": "working professionals",  "a": "🐍 Python Crash Course is perfect for working professionals — weekend batches, intensive, only ₹1999."},
-    {"q": "cheapest course",        "a": "💰 Python Crash Course & AI Workshop are both ₹1999. Python FAQs self-learning is completely free!"},
-    {"q": "certificate",            "a": "🎓 Yes! Python Crash Course and Bootcamp both give a Certificate of Completion."},
-    {"q": "job guarantee",          "a": "We don't offer job guarantee, but we provide profile building, LinkedIn guidance & mock interviews."},
-    {"q": "telugu",                 "a": "Yes! 9faqs offers Python sessions in Telugu 🇮🇳. Enroll at https://9faqs.com/enroll"},
-    {"q": "alumni",                 "a": "9FAQs Alumni get 10% discount on future courses and join our growing tech community!"},
-    {"q": "internship",             "a": "Yes! Python Bootcamp includes an optional 3-month internship after the 90-day program."},
-]
-
-SYSTEM_PROMPT = """You are a helpful WhatsApp assistant for 9faqs (https://9faqs.com), an online tech learning platform in India.
-
-COURSES AVAILABLE:
-1. Python Crash Course — ₹1999, weekend batches (Sat & Sun), live instructor-led, certificate included
+COURSES:
+1. Python Crash Course — ₹1999, weekend batches, live, certificate included
 2. Python Bootcamp — 90 days Mon-Fri, internship option, cloud lab, career prep
-3. AI Workshop — ₹1999, 4-hour live session, build website using AI tools, no coding needed
+3. AI Workshop — ₹1999, 4-hour live, build website with AI, no coding needed
 4. Python FAQs — Free self-learning, 1736+ interview questions
 
-KEY FACTS:
+KEY INFO:
 - All sessions are LIVE (not recorded)
 - Sessions available in Telugu language
-- Alumni get 10% discount on future courses
-- Enroll at: https://9faqs.com/enroll
-- No job guarantee but career guidance & mock interviews provided
+- Alumni get 10% discount
+- Enroll: https://9faqs.com/enroll
 
 RULES:
-- Keep answers SHORT (2-4 lines max) — this is WhatsApp
-- Be warm, friendly and encouraging
-- Always end with a call to action (enroll or type Hi)
-- Never make up info not listed above
-- If unsure → "Visit 9faqs.com or type Hi to talk to our team"
-- Reply in same language as the user
-"""
+- Keep answers SHORT (2-4 lines) — this is WhatsApp
+- Be warm and encouraging
+- Always suggest enrolling
+- Never make up info
+- If unsure → "Visit 9faqs.com or type Hi"
+- Reply in user's language"""
+    },
 
-BOT_CONFIG = {
-    "welcome": "👋 *Welcome to 9faqs!*\n\nYour gateway to tech careers 🚀\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr just ask me anything!",
-    "fallback": "I'm not sure about that 🤔\n\nType *Hi* to see our courses or *3* to talk to a counselor.",
+    # ── TEMPLATE: Add new client below ──
+    "resort_demo": {
+        "name":         "Sunset Resort",
+        "welcome":      "🌅 *Welcome to Sunset Resort!*\n\nYour perfect getaway awaits 🏖️\n\nPlease choose:\n1️⃣ View Rooms\n2️⃣ Book Now\n3️⃣ Talk to Concierge",
+        "fallback":     "I'm not sure about that 🤔\n\nType *Hi* to see our rooms or *3* to talk to our team.",
+        "enroll_url":   "https://sunsetresort.com/book",
+        "support_msg":  "🛎️ Connecting you to our concierge...\nWe'll reply shortly! ⏳",
+        "catalog_label":"Rooms",
+        "catalog": {
+            "deluxe": {
+                "name": "Deluxe Room", "price": "₹5000/night",
+                "duration": "Min 1 night", "emoji": "🛏️",
+                "description": "Comfortable room with garden view and all amenities.",
+                "url": "https://sunsetresort.com/rooms/deluxe"
+            },
+            "suite": {
+                "name": "Premium Suite", "price": "₹8000/night",
+                "duration": "Min 1 night", "emoji": "👑",
+                "description": "Luxury suite with sea view, jacuzzi, and butler service.",
+                "url": "https://sunsetresort.com/rooms/suite"
+            },
+        },
+        "system_prompt": """You are a helpful WhatsApp assistant for Sunset Resort.
+Help guests with room bookings, amenities, and resort information.
+Keep answers SHORT and friendly. Always encourage booking."""
+    },
 }
+
+def get_client(client_id=None):
+    cid = client_id or CLIENT_ID
+    return CLIENTS.get(cid, CLIENTS["9faqs"])
 
 # ================================================================
 # DATABASE
@@ -113,11 +132,13 @@ Base   = declarative_base()
 
 class Lead(Base):
     __tablename__ = "leads"
-    phone      = Column(String, primary_key=True)
-    name       = Column(String)
+    id         = Column(String, primary_key=True)   # phone + client_id
+    phone      = Column(String)
+    client_id  = Column(String, default="9faqs")
+    name       = Column(String, default="")
     email      = Column(String, default="")
     course     = Column(String, default="")
-    status     = Column(String, default="NEW")       # NEW / INTERESTED / ENROLLED / CLOSED
+    status     = Column(String, default="NEW")
     label      = Column(String, default="NEW")
     timestamp  = Column(DateTime, default=now_ist)
 
@@ -125,17 +146,20 @@ class Message(Base):
     __tablename__ = "messages"
     id         = Column(String, primary_key=True)
     phone      = Column(String)
-    name       = Column(String)
+    client_id  = Column(String, default="9faqs")
+    name       = Column(String, default="")
     text       = Column(Text)
     direction  = Column(String)
     timestamp  = Column(DateTime, default=now_ist)
 
 class UserControl(Base):
     __tablename__ = "user_control"
-    phone      = Column(String, primary_key=True)
+    id         = Column(String, primary_key=True)   # phone + client_id
+    phone      = Column(String)
+    client_id  = Column(String, default="9faqs")
     is_human   = Column(Boolean, default=False)
+    is_new     = Column(Boolean, default=True)
     tag        = Column(String, default="")
-    is_new     = Column(Boolean, default=True)   # First time visitor
 
 Base.metadata.create_all(engine)
 
@@ -145,43 +169,49 @@ with engine.connect() as conn:
     migrations = [
         "ALTER TABLE user_control ADD COLUMN tag VARCHAR DEFAULT ''",
         "ALTER TABLE user_control ADD COLUMN is_new BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE user_control ADD COLUMN client_id VARCHAR DEFAULT '9faqs'",
         "ALTER TABLE leads ADD COLUMN email VARCHAR DEFAULT ''",
         "ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'NEW'",
         "ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'",
+        "ALTER TABLE leads ADD COLUMN client_id VARCHAR DEFAULT '9faqs'",
+        "ALTER TABLE messages ADD COLUMN client_id VARCHAR DEFAULT '9faqs'",
     ]
-    for col_sql in migrations:
+    for sql in migrations:
         try:
-            conn.execute(text(col_sql))
+            conn.execute(text(sql))
             conn.commit()
-            print(f"✅ Migration: {col_sql[:50]}")
-        except Exception as e:
-            conn.rollback()
-            pass  # Column already exists
+            print(f"✅ Migration: {sql[:60]}")
+        except Exception:
+            try: conn.rollback()
+            except: pass
 
 Session = sessionmaker(bind=engine)
 
 # ================================================================
-# DB HELPERS
+# DB HELPERS (all scoped to client_id)
 # ================================================================
-def now_ist():
-    return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
+def make_id(phone, client_id=None):
+    return f"{client_id or CLIENT_ID}_{phone}"
 
-def save_lead(phone, name, email, course):
-    db = Session()
-    lead = Lead(phone=phone, name=name, email=email, course=course,
+def save_lead(phone, name, email, course, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+                name=name, email=email, course=course,
                 status="ENROLLED", label="ENROLLED", timestamp=now_ist())
     db.merge(lead)
     db.commit()
     db.close()
-    print(f"💾 LEAD: {name} | {email} | {course}")
+    print(f"💾 [{cid}] LEAD: {name} | {email} | {course}")
 
-def upsert_lead_interest(phone, course):
-    """Create/update lead when user shows interest in a course"""
-    db = Session()
-    lead = db.query(Lead).filter_by(phone=phone).first()
+def upsert_lead_interest(phone, course, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
     if not lead:
-        lead = Lead(phone=phone, name=phone, course=course,
-                    status="INTERESTED", label="INTERESTED", timestamp=now_ist())
+        lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+                    name=phone, course=course, status="INTERESTED",
+                    label="INTERESTED", timestamp=now_ist())
         db.add(lead)
     elif lead.status == "NEW":
         lead.status = "INTERESTED"
@@ -190,61 +220,71 @@ def upsert_lead_interest(phone, course):
     db.commit()
     db.close()
 
-def save_message(phone, name, text_content, direction):
-    db = Session()
-    msg_id = f"{phone}_{now_ist().timestamp()}"
-    db.add(Message(id=msg_id, phone=phone, name=name,
+def save_message(phone, name, text_content, direction, client_id=None):
+    cid    = client_id or CLIENT_ID
+    db     = Session()
+    msg_id = f"{cid}_{phone}_{now_ist().timestamp()}"
+    db.add(Message(id=msg_id, phone=phone, client_id=cid, name=name,
                    text=text_content, direction=direction, timestamp=now_ist()))
     db.commit()
     db.close()
 
-def is_human_mode(phone):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+def get_ctrl(phone, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     db.close()
+    return ctrl
+
+def is_human_mode(phone, client_id=None):
+    ctrl = get_ctrl(phone, client_id)
     return ctrl.is_human if ctrl else False
 
-def is_new_user(phone):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
-    db.close()
+def is_new_user(phone, client_id=None):
+    ctrl = get_ctrl(phone, client_id)
     return ctrl.is_new if ctrl else True
 
-def mark_user_seen(phone):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+def mark_user_seen(phone, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(phone=phone, is_new=False)
+        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
+                           client_id=cid, is_new=False)
         db.add(ctrl)
     else:
         ctrl.is_new = False
     db.commit()
     db.close()
 
-def set_human_mode(phone, value: bool):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+def set_human_mode(phone, value: bool, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(phone=phone, is_human=value)
+        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
+                           client_id=cid, is_human=value)
         db.add(ctrl)
     else:
         ctrl.is_human = value
     db.commit()
     db.close()
 
-def update_lead_status(phone, status):
-    db = Session()
-    lead = db.query(Lead).filter_by(phone=phone).first()
+def update_lead_status(phone, status, client_id=None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
     if not lead:
-        lead = Lead(phone=phone, name=phone, status=status,
-                    label=status, timestamp=now_ist())
+        lead = Lead(id=make_id(phone, cid), phone=phone, client_id=cid,
+                    name=phone, status=status, label=status, timestamp=now_ist())
         db.add(lead)
     else:
         lead.status = status
         lead.label  = status
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    ctrl = db.query(UserControl).filter_by(phone=phone, client_id=cid).first()
     if not ctrl:
-        ctrl = UserControl(phone=phone, tag=status)
+        ctrl = UserControl(id=make_id(phone, cid), phone=phone,
+                           client_id=cid, tag=status)
         db.add(ctrl)
     else:
         ctrl.tag = status
@@ -271,7 +311,7 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # ================================================================
-# STATE MACHINE
+# STATE MACHINE (per client)
 # ================================================================
 ENROLLMENT_FLOW = {
     "ask_name": {
@@ -294,70 +334,71 @@ ENROLLMENT_FLOW = {
 
 sessions = {}
 
-def get_session(phone):
-    if phone not in sessions:
-        sessions[phone] = {"step": None, "data": {}, "fallback_count": 0}
-    return sessions[phone]
+def get_session(phone, cid):
+    key = f"{cid}_{phone}"
+    if key not in sessions:
+        sessions[key] = {"step": None, "data": {}, "fallback_count": 0}
+    return sessions[key]
 
-def reset_session(phone):
-    sessions[phone] = {"step": None, "data": {}, "fallback_count": 0}
+def reset_session(phone, cid):
+    sessions[f"{cid}_{phone}"] = {"step": None, "data": {}, "fallback_count": 0}
 
-def set_step(phone, step):
-    sessions[phone]["step"] = step
+def set_step(phone, cid, step):
+    sessions[f"{cid}_{phone}"]["step"] = step
 
-def save_to_session(phone, key, value):
-    sessions[phone]["data"][key] = value
+def save_to_session(phone, cid, key, value):
+    sessions[f"{cid}_{phone}"]["data"][key] = value
 
-def get_from_session(phone, key, default=None):
-    return sessions[phone]["data"].get(key, default)
+def get_from_session(phone, cid, key, default=None):
+    return sessions.get(f"{cid}_{phone}", {}).get("data", {}).get(key, default)
 
 # ================================================================
 # BOT HELPERS
 # ================================================================
-def course_list_msg():
-    lines = ["📚 *Our Courses:*\n"]
-    for i, (_, c) in enumerate(COURSES.items(), 1):
-        lines.append(f"{i}. {c['emoji']} {c['name']} — {c['price']}")
-    lines.append("\nReply with *number* (1-4) to know more!")
+def catalog_list_msg(client):
+    label  = client.get("catalog_label", "Items")
+    items  = client.get("catalog", {})
+    lines  = [f"📋 *Our {label}:*\n"]
+    for i, (_, item) in enumerate(items.items(), 1):
+        lines.append(f"{i}. {item['emoji']} {item['name']} — {item['price']}")
+    lines.append("\nReply with *number* to know more!")
     return "\n".join(lines)
 
-def course_detail_msg(key):
-    c = COURSES[key]
-    h = "\n".join([f"✅ {x}" for x in c['highlights'][:3]])
-    return (f"{c['emoji']} *{c['name']}*\n\n"
-            f"💰 {c['price']}\n"
-            f"📅 {c['duration']}\n\n"
-            f"{h}\n\n"
-            f"Reply *Enroll* to join or visit:\n{c['url']}")
+def catalog_detail_msg(item):
+    return (f"{item['emoji']} *{item['name']}*\n\n"
+            f"💰 {item['price']}\n"
+            f"📅 {item['duration']}\n"
+            f"ℹ️ {item['description']}\n\n"
+            f"Reply *Enroll* to proceed!\n🔗 {item['url']}")
 
-def enrollment_done_msg(session):
+def enrollment_done_msg(session, client):
     d = session["data"]
-    return (f"✅ *Enrollment Confirmed!*\n\n"
+    return (f"✅ *Booking Confirmed!*\n\n"
             f"👤 Name: {d.get('name','—')}\n"
             f"📧 Email: {d.get('email','—')}\n"
             f"📱 Phone: {d.get('contact','—')}\n"
-            f"📚 Course: {d.get('course','General')}\n\n"
+            f"📋 Selected: {d.get('course','—')}\n\n"
             f"Our team will contact you within 24 hours! 🎉\n\n"
-            f"Type *Hi* to explore more courses.")
+            f"Type *Hi* to explore more.")
 
 # ================================================================
 # AI LAYER
 # ================================================================
-def call_ai(message: str) -> str:
+def call_ai(message: str, client: dict) -> str:
     if not openai_client:
         return None
     try:
+        prompt = client.get("system_prompt", "You are a helpful assistant.")
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": prompt},
                 {"role": "user",   "content": message}
             ],
             max_tokens=150,
             temperature=0.7
         )
         answer = response.choices[0].message.content.strip()
-        # Phase 1: Fallback if AI answer is too long or empty
         if not answer or len(answer) > 400:
             return None
         print(f"🤖 AI: {answer[:80]}...")
@@ -369,12 +410,16 @@ def call_ai(message: str) -> str:
 # ================================================================
 # MAIN MESSAGE HANDLER
 # ================================================================
-def handle_message(text, phone):
+def handle_message(text, phone, cid=None):
+    cid           = cid or CLIENT_ID
+    client        = get_client(cid)
     msg           = text.lower().strip()
     msg_words     = msg.split()
     text_original = text.strip()
-    session       = get_session(phone)
+    session       = get_session(phone, cid)
     step          = session["step"]
+    catalog       = client.get("catalog", {})
+    catalog_keys  = list(catalog.keys())
 
     # ── Enrollment Flow ──
     if step in ENROLLMENT_FLOW:
@@ -382,80 +427,81 @@ def handle_message(text, phone):
         validator = flow.get("validate")
         if validator and not validator(text):
             return flow.get("error", "Invalid input. Please try again.")
-        save_to_session(phone, flow["save_as"], text.strip())
+        save_to_session(phone, cid, flow["save_as"], text.strip())
         next_step = flow["next"]
-        set_step(phone, next_step)
+        set_step(phone, cid, next_step)
         if next_step == "done":
-            name   = get_from_session(phone, "name", "Friend")
-            email  = get_from_session(phone, "email", "")
-            course = get_from_session(phone, "course", "General")
-            save_lead(phone, name, email, course)
-            reply  = enrollment_done_msg(session)
-            reset_session(phone)
+            name   = get_from_session(phone, cid, "name", "Friend")
+            email  = get_from_session(phone, cid, "email", "")
+            course = get_from_session(phone, cid, "course", "General")
+            save_lead(phone, name, email, course, cid)
+            reply  = enrollment_done_msg(session, client)
+            reset_session(phone, cid)
             return reply
         return ENROLLMENT_FLOW[next_step]["message"]
 
-    # ── Phase 1: Restart command ──
+    # ── Restart ──
     if any(x in msg_words for x in ["hi", "hello", "hey", "start", "menu", "restart"]):
-        reset_session(phone)
-        return BOT_CONFIG["welcome"]
+        reset_session(phone, cid)
+        return client["welcome"]
 
-    # ── View courses ──
-    if msg in ["1", "courses", "course", "view courses", "view"]:
+    # ── View catalog ──
+    if msg in ["1", "courses", "course", "rooms", "room", "view", "catalog"]:
         session["fallback_count"] = 0
-        set_step(phone, "pick_course")
-        return course_list_msg()
+        set_step(phone, cid, "pick_item")
+        return catalog_list_msg(client)
 
-    # ── Pick course by number ──
-    if step == "pick_course":
-        course_keys = list(COURSES.keys())
-        course_map  = {str(i+1): key for i, key in enumerate(course_keys)}
-        if msg in course_map:
-            key = course_map[msg]
-            save_to_session(phone, "course", COURSES[key]["name"])
-            set_step(phone, None)
-            upsert_lead_interest(phone, COURSES[key]["name"])
+    # ── Pick by number ──
+    if step == "pick_item":
+        item_map = {str(i+1): key for i, key in enumerate(catalog_keys)}
+        if msg in item_map:
+            key  = item_map[msg]
+            item = catalog[key]
+            save_to_session(phone, cid, "course", item["name"])
+            set_step(phone, cid, None)
+            upsert_lead_interest(phone, item["name"], cid)
             session["fallback_count"] = 0
-            return course_detail_msg(key)
-        return "Please reply with a number 1-4 to select a course 👆"
+            return catalog_detail_msg(item)
+        return f"Please reply with a number 1-{len(catalog_keys)} 👆"
 
-    # ── Course by name ──
-    for key in COURSES:
-        if key.replace("_", " ") in msg or key.split("_")[0] in msg:
-            save_to_session(phone, "course", COURSES[key]["name"])
-            upsert_lead_interest(phone, COURSES[key]["name"])
-            set_step(phone, None)
+    # ── Pick by keyword ──
+    for key in catalog_keys:
+        if key.split("_")[0] in msg or catalog[key]["name"].lower() in msg:
+            item = catalog[key]
+            save_to_session(phone, cid, "course", item["name"])
+            upsert_lead_interest(phone, item["name"], cid)
+            set_step(phone, cid, None)
             session["fallback_count"] = 0
-            return course_detail_msg(key)
+            return catalog_detail_msg(item)
 
     # ── Enroll ──
-    if msg in ["2", "enroll", "enroll now", "join", "register"] and step != "pick_course":
-        set_step(phone, "ask_name")
+    if msg in ["2", "enroll", "enroll now", "join", "register", "book", "book now"]:
+        set_step(phone, cid, "ask_name")
         session["fallback_count"] = 0
-        return f"Great choice! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
+        return f"Great! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
 
     # ── Counselor ──
-    if msg in ["3", "counselor", "human", "agent", "help", "talk to counselor", "talk"]:
-        set_human_mode(phone, True)
-        reset_session(phone)
-        update_lead_status(phone, "HOT LEAD")
+    if msg in ["3", "counselor", "human", "agent", "help", "talk", "concierge"]:
+        set_human_mode(phone, True, cid)
+        reset_session(phone, cid)
+        update_lead_status(phone, "HOT LEAD", cid)
         session["fallback_count"] = 0
-        return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
+        return client["support_msg"]
 
     # ── AI Layer ──
-    ai_answer = call_ai(text_original)
+    ai_answer = call_ai(text_original, client)
     if ai_answer:
         session["fallback_count"] = 0
         return ai_answer
 
-    # ── Smart escalation ──
+    # ── Escalation ──
     session["fallback_count"] = session.get("fallback_count", 0) + 1
     if session["fallback_count"] >= 2:
         session["fallback_count"] = 0
-        set_human_mode(phone, True)
+        set_human_mode(phone, True, cid)
         return "🙏 Let me connect you to a human agent!\n\nPlease wait..."
 
-    return BOT_CONFIG["fallback"]
+    return client["fallback"]
 
 # ================================================================
 # SEND WHATSAPP
@@ -467,7 +513,7 @@ def send_whatsapp(phone, message):
             "channel":     "whatsapp",
             "source":      GUPSHUP_NUMBER,
             "destination": phone,
-            "src.name":    "9faqsbot",
+            "src.name":    get_client()["name"],
             "message":     json.dumps({"type": "text", "text": message})
         }).encode()
         req = urllib.request.Request(url, data=params)
@@ -479,63 +525,59 @@ def send_whatsapp(phone, message):
         print(f"❌ Send error: {e}")
 
 # ================================================================
-# ROUTES
+# API ROUTES
 # ================================================================
 @app.get("/")
 def home():
-    return {"status": "9faqs Bot v4.0 ✅"}
+    return {"status": "Zeneral Bot Platform v1.0 ✅", "client": CLIENT_ID}
 
 @app.get("/dashboard")
 def dashboard():
     return FileResponse("dashboard.html")
 
 @app.get("/leads")
-def get_leads():
-    db    = Session()
-    leads = db.query(Lead).order_by(Lead.timestamp.desc()).all()
+def get_leads(client_id: str = None):
+    cid = client_id or CLIENT_ID
+    db  = Session()
+    leads = db.query(Lead).filter_by(client_id=cid).order_by(Lead.timestamp.desc()).all()
     db.close()
     return [{"phone": l.phone, "name": l.name, "email": l.email or "",
              "course": l.course or "", "status": l.status or "NEW",
              "label": l.label or "NEW", "timestamp": str(l.timestamp)} for l in leads]
 
 @app.get("/conversations")
-def get_conversations():
+def get_conversations(client_id: str = None):
+    cid  = client_id or CLIENT_ID
     db   = Session()
-    msgs = db.query(Message).order_by(Message.timestamp.desc()).all()
+    msgs = db.query(Message).filter_by(client_id=cid).order_by(Message.timestamp.desc()).all()
     db.close()
     seen = {}
     for m in msgs:
         if m.phone not in seen:
             seen[m.phone] = {"phone": m.phone, "name": m.name,
                              "last_message": m.text, "timestamp": str(m.timestamp),
-                             "is_human": is_human_mode(m.phone)}
+                             "is_human": is_human_mode(m.phone, cid)}
     return list(seen.values())
 
 @app.get("/messages/{phone}")
-def get_messages(phone: str):
+def get_messages(phone: str, client_id: str = None):
+    cid  = client_id or CLIENT_ID
     db   = Session()
-    msgs = db.query(Message).filter_by(phone=phone).order_by(Message.timestamp.asc()).all()
+    msgs = db.query(Message).filter_by(phone=phone, client_id=cid).order_by(Message.timestamp.asc()).all()
     db.close()
     return [{"text": m.text, "direction": m.direction,
              "timestamp": str(m.timestamp), "name": m.name} for m in msgs]
 
-# Phase 2: Update lead status from dashboard
-@app.post("/status/{phone}")
-async def update_status(phone: str, req: Request):
-    body   = await req.json()
-    status = body.get("status", "NEW")
-    update_lead_status(phone, status)
-    await manager.broadcast({"type": "status_update", "phone": phone, "status": status})
-    return {"status": "updated"}
-
 @app.get("/metrics")
-def get_metrics():
+def get_metrics(client_id: str = None):
+    cid   = client_id or CLIENT_ID
     db    = Session()
-    leads = db.query(Lead).all()
-    msgs  = db.query(Message).all()
+    leads = db.query(Lead).filter_by(client_id=cid).all()
+    msgs  = db.query(Message).filter_by(client_id=cid).all()
     db.close()
     today = now_ist().date()
     return {
+        "client_id":           cid,
         "total_leads":         len(leads),
         "enrolled":            len([l for l in leads if l.status == "ENROLLED"]),
         "interested":          len([l for l in leads if l.status == "INTERESTED"]),
@@ -546,16 +588,30 @@ def get_metrics():
         "total_conversations": len(set(m.phone for m in msgs)),
     }
 
+@app.get("/clients")
+def list_clients():
+    return [{"id": k, "name": v["name"]} for k, v in CLIENTS.items()]
+
+@app.post("/status/{phone}")
+async def update_status(phone: str, req: Request):
+    body   = await req.json()
+    status = body.get("status", "NEW")
+    cid    = body.get("client_id", CLIENT_ID)
+    update_lead_status(phone, status, cid)
+    await manager.broadcast({"type": "status_update", "phone": phone, "status": status})
+    return {"status": "updated"}
+
 @app.post("/takeover/{phone}")
-async def takeover(phone: str):
-    set_human_mode(phone, True)
-    update_lead_status(phone, "HOT LEAD")
+async def takeover(phone: str, req: Request = None):
+    cid = CLIENT_ID
+    set_human_mode(phone, True, cid)
+    update_lead_status(phone, "HOT LEAD", cid)
     await manager.broadcast({"type": "takeover", "phone": phone})
     return {"status": "human mode on"}
 
 @app.post("/handback/{phone}")
 async def handback(phone: str):
-    set_human_mode(phone, False)
+    set_human_mode(phone, False, CLIENT_ID)
     await manager.broadcast({"type": "handback", "phone": phone})
     return {"status": "bot mode on"}
 
@@ -565,7 +621,7 @@ async def agent_reply(phone: str, req: Request):
     message = body.get("message", "")
     if message:
         send_whatsapp(phone, message)
-        save_message(phone, "Agent", message, "out")
+        save_message(phone, "Agent", message, "out", CLIENT_ID)
         await manager.broadcast({"type": "new_message", "phone": phone,
                                   "text": message, "direction": "out", "name": "Agent"})
     return {"status": "sent"}
@@ -574,7 +630,7 @@ async def agent_reply(phone: str, req: Request):
 async def tag_lead(phone: str, req: Request):
     body = await req.json()
     tag  = body.get("tag", "")
-    update_lead_status(phone, tag)
+    update_lead_status(phone, tag, CLIENT_ID)
     await manager.broadcast({"type": "tag_update", "phone": phone, "tag": tag})
     return {"status": "tagged"}
 
@@ -600,33 +656,33 @@ async def webhook(req: Request):
         msg   = messages[0]
         phone = msg["from"]
         name  = contacts[0]["profile"]["name"] if contacts else phone
+        cid   = CLIENT_ID
 
         if msg.get("type") == "text":
             text = msg["text"]["body"]
-            print(f"📩 {name} ({phone}): {text}")
-            save_message(phone, name, text, "in")
-
-            # Phase 6: Broadcast for real-time dashboard
+            print(f"📩 [{cid}] {name} ({phone}): {text}")
+            save_message(phone, name, text, "in", cid)
             await manager.broadcast({"type": "new_message", "phone": phone,
-                                     "name": name, "text": text, "direction": "in"})
+                                     "name": name, "text": text, "direction": "in",
+                                     "client_id": cid})
 
-            if is_human_mode(phone):
+            if is_human_mode(phone, cid):
                 print(f"👤 Human mode — skipping bot for {phone}")
                 return {"status": "ok"}
 
-            # Phase 1: First time user gets welcome
-            if is_new_user(phone):
-                mark_user_seen(phone)
-                reply = BOT_CONFIG["welcome"]
+            # First time user
+            if is_new_user(phone, cid):
+                mark_user_seen(phone, cid)
+                reply = get_client(cid)["welcome"]
             else:
-                reply = handle_message(text, phone)
+                reply = handle_message(text, phone, cid)
 
             send_whatsapp(phone, reply)
-            save_message(phone, "Bot", reply, "out")
+            save_message(phone, "Bot", reply, "out", cid)
             await manager.broadcast({"type": "new_message", "phone": phone,
                                      "name": "Bot", "text": reply, "direction": "out"})
         else:
-            if not is_human_mode(phone):
+            if not is_human_mode(phone, cid):
                 send_whatsapp(phone, "Sorry, I only understand text. Type *Hi* to start 👋")
 
     except Exception as e:
