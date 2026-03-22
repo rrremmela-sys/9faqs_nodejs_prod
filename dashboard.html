@@ -535,12 +535,12 @@ function connectWS() {
 // ── INIT ──
 loadLeads();
 connectWS();
-setInterval(loadLeads, 30000);
+setInterval(loadLeads, 60000);        // refresh leads every 60s
 setInterval(() => {
   if (document.getElementById('chatPage').classList.contains('active')) {
     loadConversations();
   }
-}, 5000);
+}, 15000);                            // refresh conversations every 15s
 </script>
 </body>
 </html>

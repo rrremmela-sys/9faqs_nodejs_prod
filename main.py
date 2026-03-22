@@ -44,7 +44,14 @@ def get_client(client_id=None):
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=5,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True
+)
 Base   = declarative_base()
 
 class Lead(Base):
@@ -105,6 +112,21 @@ with engine.connect() as conn:
             except: pass
 
 Session = sessionmaker(bind=engine)
+
+from contextlib import contextmanager
+
+@contextmanager
+def get_db():
+    """Context manager to handle DB sessions properly"""
+    db = Session()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 # ================================================================
 # DB HELPERS (all scoped to client_id)
