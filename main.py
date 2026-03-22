@@ -30,96 +30,13 @@ def now_ist():
     return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
 
 # ================================================================
-# MULTI-CLIENT CONFIG
+# MULTI-CLIENT CONFIG (imported from clients_config.py)
 # ================================================================
-CLIENTS = {
-    "9faqs": {
-        "name":         "9faqs",
-        "welcome":      "👋 *Welcome to 9faqs!*\n\nYour gateway to tech careers 🚀\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr just ask me anything!",
-        "fallback":     "I'm not sure about that 🤔\n\nType *Hi* to see our courses or *3* to talk to a counselor.",
-        "enroll_url":   "https://9faqs.com/enroll",
-        "support_msg":  "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳",
-        "catalog_label":"Courses",
-        "catalog": {
-            "crash_course": {
-                "name": "Python Crash Course", "price": "₹1999",
-                "duration": "Weekend (Sat & Sun, 10AM–4PM)", "emoji": "🐍",
-                "description": "Fast-track live Python training with AI tools intro.",
-                "url": "https://9faqs.com/training/python_crash_course"
-            },
-            "bootcamp": {
-                "name": "Python Bootcamp", "price": "Contact us",
-                "duration": "90 days Mon–Fri + internship", "emoji": "🚀",
-                "description": "Beginner to advanced Python with cloud lab & career prep.",
-                "url": "https://9faqs.com/training/python_bootcamp"
-            },
-            "ai_workshop": {
-                "name": "AI Workshop", "price": "₹1999",
-                "duration": "4-hour live workshop", "emoji": "🤖",
-                "description": "Build a website using AI tools. No coding needed.",
-                "url": "https://9faqs.com/training/ai_workshops"
-            },
-            "python_faqs": {
-                "name": "Python FAQs (Free)", "price": "Free",
-                "duration": "Self-paced", "emoji": "📚",
-                "description": "1736+ Python interview questions with adaptive learning.",
-                "url": "https://9faqs.com/python"
-            },
-        },
-        "system_prompt": """You are a helpful WhatsApp assistant for 9faqs (https://9faqs.com), an online tech learning platform in India.
-
-COURSES:
-1. Python Crash Course — ₹1999, weekend batches, live, certificate included
-2. Python Bootcamp — 90 days Mon-Fri, internship option, cloud lab, career prep
-3. AI Workshop — ₹1999, 4-hour live, build website with AI, no coding needed
-4. Python FAQs — Free self-learning, 1736+ interview questions
-
-KEY INFO:
-- All sessions are LIVE (not recorded)
-- Sessions available in Telugu language
-- Alumni get 10% discount
-- Enroll: https://9faqs.com/enroll
-
-RULES:
-- Keep answers SHORT (2-4 lines) — this is WhatsApp
-- Be warm and encouraging
-- Always suggest enrolling
-- Never make up info
-- If unsure → "Visit 9faqs.com or type Hi"
-- Reply in user's language"""
-    },
-
-    # ── TEMPLATE: Add new client below ──
-    "resort_demo": {
-        "name":         "Sunset Resort",
-        "welcome":      "🌅 *Welcome to Sunset Resort!*\n\nYour perfect getaway awaits 🏖️\n\nPlease choose:\n1️⃣ View Rooms\n2️⃣ Book Now\n3️⃣ Talk to Concierge",
-        "fallback":     "I'm not sure about that 🤔\n\nType *Hi* to see our rooms or *3* to talk to our team.",
-        "enroll_url":   "https://sunsetresort.com/book",
-        "support_msg":  "🛎️ Connecting you to our concierge...\nWe'll reply shortly! ⏳",
-        "catalog_label":"Rooms",
-        "catalog": {
-            "deluxe": {
-                "name": "Deluxe Room", "price": "₹5000/night",
-                "duration": "Min 1 night", "emoji": "🛏️",
-                "description": "Comfortable room with garden view and all amenities.",
-                "url": "https://sunsetresort.com/rooms/deluxe"
-            },
-            "suite": {
-                "name": "Premium Suite", "price": "₹8000/night",
-                "duration": "Min 1 night", "emoji": "👑",
-                "description": "Luxury suite with sea view, jacuzzi, and butler service.",
-                "url": "https://sunsetresort.com/rooms/suite"
-            },
-        },
-        "system_prompt": """You are a helpful WhatsApp assistant for Sunset Resort.
-Help guests with room bookings, amenities, and resort information.
-Keep answers SHORT and friendly. Always encourage booking."""
-    },
-}
+from clients_config import CLIENTS, get_client as _get_client
 
 def get_client(client_id=None):
     cid = client_id or CLIENT_ID
-    return CLIENTS.get(cid, CLIENTS["9faqs"])
+    return _get_client(cid)
 
 # ================================================================
 # DATABASE
@@ -137,9 +54,11 @@ class Lead(Base):
     name       = Column(String, default="")
     email      = Column(String, default="")
     course     = Column(String, default="")
-    status     = Column(String, default="NEW")
-    label      = Column(String, default="NEW")
-    timestamp  = Column(DateTime, default=now_ist)
+    status             = Column(String, default="NEW")
+    label              = Column(String, default="NEW")
+    timestamp          = Column(DateTime, default=now_ist)
+    last_followup_sent = Column(DateTime, nullable=True)
+    last_seen  = Column(DateTime, default=now_ist)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -173,6 +92,7 @@ with engine.connect() as conn:
         "ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'",
         "ALTER TABLE leads ADD COLUMN client_id VARCHAR DEFAULT '9faqs'",
         "ALTER TABLE messages ADD COLUMN client_id VARCHAR DEFAULT '9faqs'",
+        "ALTER TABLE leads ADD COLUMN last_seen TIMESTAMP DEFAULT NOW()",
     ]
     for sql in migrations:
         try:
@@ -230,20 +150,72 @@ def save_message(phone, name, text_content, direction, client_id=None):
     if direction == "in":
         capture_partial_lead(phone, name, cid)
 
+def update_last_seen(phone, cid):
+    """Update last seen timestamp on every message"""
+    db   = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
+    if lead:
+        lead.last_seen = now_ist()
+        db.commit()
+    db.close()
+
+def find_dropoffs(minutes=30, cid=None):
+    """Find leads who were interested but dropped off"""
+    cid     = cid or CLIENT_ID
+    db      = Session()
+    cutoff  = now_ist() - timedelta(minutes=minutes)
+    leads   = db.query(Lead).filter(
+        Lead.client_id == cid,
+        Lead.status != "ENROLLED",
+        Lead.status != "CLOSED",
+        Lead.status != "NEW",
+        Lead.last_seen != None,
+        Lead.last_seen < cutoff
+    ).all()
+    db.close()
+    return leads
+
+def send_followup(lead):
+    """Send a follow-up message to a dropped-off lead"""
+    course  = lead.course or "our courses"
+    name    = lead.name if lead.name and lead.name != lead.phone else "there"
+    lines   = [
+        "Hey " + name + " 👋",
+        "",
+        "You were checking out *" + course + "* earlier 👀",
+        "",
+        "Still interested? I can help you enroll right now!",
+        "",
+        "Type *Hi* to continue or *3* to talk to a counselor 😊"
+    ]
+    message = "\n".join(lines)
+    send_whatsapp(lead.phone, message)
+    # Mark as followed up so we don't spam
+    db = Session()
+    l  = db.query(Lead).filter_by(phone=lead.phone, client_id=lead.client_id).first()
+    if l:
+        l.status = "FOLLOWUP_SENT"
+        l.label  = "FOLLOWUP"
+    db.commit()
+    db.close()
+    print(f"📤 Follow-up sent to {lead.name} ({lead.phone})")
+
 def capture_partial_lead(phone, name, cid):
     """Save whoever messages us — even if they never complete enrollment"""
     db   = Session()
     lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
     if not lead:
-        # New visitor — save with name from WhatsApp profile
         lead = Lead(phone=phone, client_id=cid, name=name,
-                    status="NEW", label="NEW", timestamp=now_ist())
+                    status="NEW", label="NEW",
+                    timestamp=now_ist(), last_seen=now_ist())
         db.add(lead)
         db.commit()
         print(f"👤 [{cid}] Partial lead captured: {name} ({phone})")
-    elif lead.name == phone and name != phone:
-        # Update name if we only had phone number before
-        lead.name = name
+    else:
+        # Update name + last_seen
+        if lead.name == phone and name != phone:
+            lead.name = name
+        lead.last_seen = now_ist()
         db.commit()
     db.close()
 
@@ -423,6 +395,42 @@ def call_ai(message: str, client: dict) -> str:
         return None
 
 # ================================================================
+# RETURNING USER CHECK
+# ================================================================
+def get_returning_user_msg(phone, cid):
+    """Check if user is already enrolled and show personalized message"""
+    db   = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
+    db.close()
+    if not lead:
+        return None
+    name   = lead.name or "there"
+    course = lead.course or "our course"
+    if lead.status == "ENROLLED":
+        lines = [
+            "👋 Welcome back *" + name + "*!",
+            "",
+            "You are already enrolled in *" + course + "* ✅",
+            "",
+            "What would you like to do?",
+            "1️⃣ Enroll in a new course",
+            "2️⃣ Talk to counselor about your course",
+            "3️⃣ See all courses",
+        ]
+        return "\n".join(lines)
+    elif lead.status == "INTERESTED":
+        lines = [
+            "👋 Welcome back *" + name + "*!",
+            "",
+            "You were looking at *" + course + "* last time 👀",
+            "",
+            "Ready to enroll? Type *Enroll* to continue!",
+            "Or type *1* to see all courses.",
+        ]
+        return "\n".join(lines)
+    return None
+
+# ================================================================
 # MAIN MESSAGE HANDLER
 # ================================================================
 def handle_message(text, phone, cid=None):
@@ -438,11 +446,31 @@ def handle_message(text, phone, cid=None):
 
     # ── Enrollment Flow ──
     if step in ENROLLMENT_FLOW:
-        flow      = ENROLLMENT_FLOW[step]
+        flow = ENROLLMENT_FLOW[step]
+
+        # Allow exit from flow anytime
+        if msg in ["cancel", "stop", "quit", "exit", "hi", "menu"]:
+            reset_session(phone, cid)
+            return client["welcome"]
+
+        # Allow AI for off-topic questions during flow
+        if "?" in text or len(msg.split()) > 4:
+            # Check if it looks like an answer to the current question
+            validator = flow.get("validate")
+            if validator and not validator(text):
+                # Might be a question — try AI first
+                ai = call_ai(text_original, client)
+                if ai:
+                    return ai + "\n\n_(To continue enrollment: " + flow["message"] + ")_"
+                return flow.get("error", "Invalid input. Please try again.")
+
         validator = flow.get("validate")
         if validator and not validator(text):
             return flow.get("error", "Invalid input. Please try again.")
-        save_to_session(phone, cid, flow["save_as"], text.strip())
+
+        # Handle skip for email
+        val = "not provided" if text.lower().strip() == "skip" else text.strip()
+        save_to_session(phone, cid, flow["save_as"], val)
         next_step = flow["next"]
         set_step(phone, cid, next_step)
         if next_step == "done":
@@ -540,6 +568,59 @@ def send_whatsapp(phone, message):
         print(f"❌ Send error: {e}")
 
 # ================================================================
+# LEAD RECOVERY + ANTI-SPAM
+# ================================================================
+def can_send_followup(lead, min_hours=24):
+    """Check if enough time has passed since last followup"""
+    if not lead.last_followup_sent:
+        return True
+    time_since = now_ist() - lead.last_followup_sent
+    return time_since.total_seconds() > (min_hours * 3600)
+
+def mark_followup_sent(phone, cid):
+    """Update last_followup_sent timestamp"""
+    db   = Session()
+    lead = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
+    if lead:
+        lead.last_followup_sent = now_ist()
+        db.commit()
+    db.close()
+
+def get_smart_followup_msg(lead):
+    """Generate smart personalized followup based on lead status"""
+    name   = lead.name or "there"
+    course = lead.course or "our courses"
+
+    if lead.status == "INTERESTED":
+        return "\n".join([
+            "👋 Hi " + name + "!",
+            "",
+            "You were checking out *" + course + "* recently 👀",
+            "",
+            "Seats are filling up fast! 🔥",
+            "Type *Enroll* to secure your spot or",
+            "Type *Hi* to explore more options.",
+        ])
+    elif lead.status == "NEW":
+        return "\n".join([
+            "👋 Hi " + name + "!",
+            "",
+            "We noticed you visited 9faqs recently 🙌",
+            "",
+            "Can we help you pick the right course?",
+            "Type *Hi* to get started!",
+        ])
+    elif lead.status == "HOT LEAD":
+        return "\n".join([
+            "👋 Hi " + name + "!",
+            "",
+            "Our counselor will reach out to you shortly 📞",
+            "",
+            "Meanwhile, type *Hi* to explore our courses!",
+        ])
+    return None
+
+# ================================================================
 # API ROUTES
 # ================================================================
 @app.get("/")
@@ -603,6 +684,59 @@ def get_metrics(client_id: str = None):
         "total_conversations": len(set(m.phone for m in msgs)),
     }
 
+@app.post("/followup/{phone}")
+async def send_followup(phone: str, req: Request):
+    """Manually trigger a followup message to a lead"""
+    body    = await req.json()
+    cid     = body.get("client_id", CLIENT_ID)
+    db      = Session()
+    lead    = db.query(Lead).filter_by(phone=phone, client_id=cid).first()
+    db.close()
+
+    if not lead:
+        return {"status": "error", "message": "Lead not found"}
+
+    # Anti-spam check
+    if not can_send_followup(lead, min_hours=1):
+        return {"status": "skipped", "message": "Followup sent recently — wait before sending again"}
+
+    # Get smart message or use custom
+    custom_msg = body.get("message")
+    message    = custom_msg or get_smart_followup_msg(lead)
+
+    if not message:
+        return {"status": "error", "message": "No followup message available"}
+
+    # Send it
+    send_whatsapp(phone, message)
+    save_message(phone, "Bot", message, "out", cid)
+    mark_followup_sent(phone, cid)
+
+    await manager.broadcast({"type": "new_message", "phone": phone,
+                              "text": message, "direction": "out", "name": "Followup"})
+    return {"status": "sent", "message": message}
+
+@app.get("/followup/eligible")
+def get_followup_eligible(client_id: str = None):
+    """Get all leads eligible for followup (not contacted in 24hrs)"""
+    cid   = client_id or CLIENT_ID
+    db    = Session()
+    leads = db.query(Lead).filter_by(client_id=cid).filter(
+        Lead.status.in_(["NEW", "INTERESTED", "HOT LEAD"])
+    ).all()
+    db.close()
+    eligible = []
+    for l in leads:
+        if can_send_followup(l, min_hours=24):
+            eligible.append({
+                "phone":    l.phone,
+                "name":     l.name,
+                "course":   l.course,
+                "status":   l.status,
+                "last_followup": str(l.last_followup_sent) if l.last_followup_sent else "Never"
+            })
+    return eligible
+
 @app.get("/clients")
 def list_clients():
     return [{"id": k, "name": v["name"]} for k, v in CLIENTS.items()]
@@ -649,6 +783,35 @@ async def tag_lead(phone: str, req: Request):
     await manager.broadcast({"type": "tag_update", "phone": phone, "tag": tag})
     return {"status": "tagged"}
 
+# ================================================================
+# DROP-OFF FOLLOW-UP ROUTES
+# ================================================================
+@app.get("/run-followup")
+def run_followup(minutes: int = 30, client_id: str = None):
+    """Manually trigger follow-up for dropped-off leads"""
+    cid   = client_id or CLIENT_ID
+    leads = find_dropoffs(minutes=minutes, cid=cid)
+    sent  = []
+    for lead in leads:
+        try:
+            send_followup(lead)
+            sent.append({"phone": lead.phone, "name": lead.name, "course": lead.course})
+        except Exception as e:
+            print(f"❌ Follow-up error for {lead.phone}: {e}")
+    return {
+        "status": "done",
+        "sent_count": len(sent),
+        "leads": sent
+    }
+
+@app.get("/dropoffs")
+def get_dropoffs(minutes: int = 30, client_id: str = None):
+    """Preview who would get a follow-up (without sending)"""
+    cid   = client_id or CLIENT_ID
+    leads = find_dropoffs(minutes=minutes, cid=cid)
+    return [{"phone": l.phone, "name": l.name, "course": l.course,
+             "status": l.status, "last_seen": str(l.last_seen)} for l in leads]
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -685,10 +848,11 @@ async def webhook(req: Request):
                 print(f"👤 Human mode — skipping bot for {phone}")
                 return {"status": "ok"}
 
-            # First time user
+            # Check if returning enrolled user
             if is_new_user(phone, cid):
                 mark_user_seen(phone, cid)
-                reply = get_client(cid)["welcome"]
+                returning = get_returning_user_msg(phone, cid)
+                reply = returning if returning else get_client(cid)["welcome"]
             else:
                 reply = handle_message(text, phone, cid)
 
