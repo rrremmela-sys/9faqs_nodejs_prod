@@ -1,14 +1,13 @@
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
+from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from openai import OpenAI
 import urllib.request
 import urllib.parse
 import urllib.error
-from openai import OpenAI
-import urllib.parse
 import json
 import os
 from datetime import datetime, timezone, timedelta
@@ -16,84 +15,280 @@ from datetime import datetime, timezone, timedelta
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-GUPSHUP_API_KEY  = os.getenv("GUPSHUP_API_KEY")
-GUPSHUP_NUMBER   = os.getenv("GUPSHUP_NUMBER")
-WHATSAPP_TOKEN   = os.getenv("WHATSAPP_TOKEN")
-PHONE_NUMBER_ID  = os.getenv("PHONE_NUMBER_ID", "1074621342402018")
+# ================================================================
+# CONFIG
+# ================================================================
+GUPSHUP_API_KEY = os.getenv("GUPSHUP_API_KEY")
+GUPSHUP_NUMBER  = os.getenv("GUPSHUP_NUMBER")
 DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
-IST = timezone(timedelta(hours=5, minutes=30))  # Indian Standard Time
+OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
 
-# ── OpenAI Client ──
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client   = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-SYSTEM_PROMPT = """You are a helpful assistant for 9faqs, an online learning platform.
-
-Available courses:
-1. Python Basics — 4 weeks, ₹1999, next batch April 1
-2. AI for Beginners — 6 weeks, ₹2999, next batch April 5
-3. Web Development — 8 weeks, ₹3999, next batch April 10
-4. Data Science — 10 weeks, ₹4999, next batch April 15
-
-All courses include: certificate, placement support, live projects, mentor support.
-
-Your job:
-- Answer questions about courses clearly
-- Suggest the right course based on user interest
-- Encourage enrollment
-- Keep answers SHORT (max 3-4 lines) — this is WhatsApp
-- If user wants to enroll → tell them to type 'Hi' to start
-- Never make up information not listed above
-"""
+def now_ist():
+    return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
 
 # ================================================================
-# 1. KNOWLEDGE BASE (Config-driven — change without touching code)
+# KNOWLEDGE BASE (from 9faqs.com)
 # ================================================================
 COURSES = {
-    "python": {"name": "Python Basics",     "duration": "4 weeks",  "price": "₹1999", "batch": "April 1",  "emoji": "🐍"},
-    "ai":     {"name": "AI for Beginners",  "duration": "6 weeks",  "price": "₹2999", "batch": "April 5",  "emoji": "🤖"},
-    "web":    {"name": "Web Development",   "duration": "8 weeks",  "price": "₹3999", "batch": "April 10", "emoji": "🌐"},
-    "data":   {"name": "Data Science",      "duration": "10 weeks", "price": "₹4999", "batch": "April 15", "emoji": "📊"},
+    "crash_course": {
+        "name": "Python Crash Course", "price": "₹1999",
+        "duration": "Weekend (Sat & Sun, 10AM–4PM)", "emoji": "🐍",
+        "level": "Beginner–Intermediate", "certificate": True,
+        "highlights": ["Live instructor-led", "AI tools intro", "Git & Jira", "Interview prep"],
+        "url": "https://9faqs.com/training/python_crash_course"
+    },
+    "bootcamp": {
+        "name": "Python Bootcamp", "price": "Contact for pricing",
+        "duration": "90 days (Mon–Fri, 12PM–6PM) + 3mo internship", "emoji": "🚀",
+        "level": "Beginner–Advanced", "certificate": True, "internship": True,
+        "highlights": ["Cloud lab support", "Hands-on projects", "Career prep", "Mock interviews"],
+        "url": "https://9faqs.com/training/python_bootcamp"
+    },
+    "ai_workshop": {
+        "name": "AI Workshop", "price": "₹1999",
+        "duration": "4-hour live workshop", "emoji": "🤖",
+        "level": "No coding required", "certificate": False,
+        "highlights": ["Build website with AI", "ChatGPT + Cursor IDE", "Domain & hosting setup", "1-1 post support"],
+        "url": "https://9faqs.com/training/ai_workshops"
+    },
+    "python_faqs": {
+        "name": "Python FAQs (Self-Learn)", "price": "Free",
+        "duration": "Self-paced", "emoji": "📚",
+        "level": "All levels", "certificate": False,
+        "highlights": ["1736+ Python questions", "Adaptive learning", "Interview prep"],
+        "url": "https://9faqs.com/python"
+    },
 }
+
+GENERAL_FAQS = [
+    {"q": "best for beginners",     "a": "🚀 Python Bootcamp is best for complete beginners — 90 days with cloud lab + internship. For a quick start, try the weekend Crash Course (₹1999)."},
+    {"q": "working professionals",  "a": "🐍 Python Crash Course is perfect for working professionals — weekend batches, intensive, only ₹1999."},
+    {"q": "cheapest course",        "a": "💰 Python Crash Course & AI Workshop are both ₹1999. Python FAQs self-learning is completely free!"},
+    {"q": "certificate",            "a": "🎓 Yes! Python Crash Course and Bootcamp both give a Certificate of Completion."},
+    {"q": "job guarantee",          "a": "We don't offer job guarantee, but we provide profile building, LinkedIn guidance & mock interviews."},
+    {"q": "telugu",                 "a": "Yes! 9faqs offers Python sessions in Telugu 🇮🇳. Enroll at https://9faqs.com/enroll"},
+    {"q": "alumni",                 "a": "9FAQs Alumni get 10% discount on future courses and join our growing tech community!"},
+    {"q": "internship",             "a": "Yes! Python Bootcamp includes an optional 3-month internship after the 90-day program."},
+]
+
+SYSTEM_PROMPT = """You are a helpful WhatsApp assistant for 9faqs (https://9faqs.com), an online tech learning platform in India.
+
+COURSES AVAILABLE:
+1. Python Crash Course — ₹1999, weekend batches (Sat & Sun), live instructor-led, certificate included
+2. Python Bootcamp — 90 days Mon-Fri, internship option, cloud lab, career prep
+3. AI Workshop — ₹1999, 4-hour live session, build website using AI tools, no coding needed
+4. Python FAQs — Free self-learning, 1736+ interview questions
+
+KEY FACTS:
+- All sessions are LIVE (not recorded)
+- Sessions available in Telugu language
+- Alumni get 10% discount on future courses
+- Enroll at: https://9faqs.com/enroll
+- No job guarantee but career guidance & mock interviews provided
+
+RULES:
+- Keep answers SHORT (2-4 lines max) — this is WhatsApp
+- Be warm, friendly and encouraging
+- Always end with a call to action (enroll or type Hi)
+- Never make up info not listed above
+- If unsure → "Visit 9faqs.com or type Hi to talk to our team"
+- Reply in same language as the user
+"""
 
 BOT_CONFIG = {
-    "name":     "9faqs",
-    "welcome":  "👋 *Welcome to 9faqs!*\n\nWe offer industry-ready tech courses.\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor",
-    "fallback": "Sorry, I didn't understand 🤔\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr type *Hi* to restart.",
+    "welcome": "👋 *Welcome to 9faqs!*\n\nYour gateway to tech careers 🚀\n\nPlease choose:\n1️⃣ View Courses\n2️⃣ Enroll Now\n3️⃣ Talk to Counselor\n\nOr just ask me anything!",
+    "fallback": "I'm not sure about that 🤔\n\nType *Hi* to see our courses or *3* to talk to a counselor.",
 }
 
 # ================================================================
-# 2. STATE MACHINE ENGINE
+# DATABASE
 # ================================================================
-# Each state has:
-#   - message  : what bot asks
-#   - validate : optional validation function
-#   - next     : next state after valid input
-#   - save_as  : key to save user's answer in session data
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
+engine = create_engine(DATABASE_URL)
+Base   = declarative_base()
+
+class Lead(Base):
+    __tablename__ = "leads"
+    phone      = Column(String, primary_key=True)
+    name       = Column(String)
+    email      = Column(String, default="")
+    course     = Column(String, default="")
+    status     = Column(String, default="NEW")       # NEW / INTERESTED / ENROLLED / CLOSED
+    label      = Column(String, default="NEW")
+    timestamp  = Column(DateTime, default=now_ist)
+
+class Message(Base):
+    __tablename__ = "messages"
+    id         = Column(String, primary_key=True)
+    phone      = Column(String)
+    name       = Column(String)
+    text       = Column(Text)
+    direction  = Column(String)
+    timestamp  = Column(DateTime, default=now_ist)
+
+class UserControl(Base):
+    __tablename__ = "user_control"
+    phone      = Column(String, primary_key=True)
+    is_human   = Column(Boolean, default=False)
+    tag        = Column(String, default="")
+    is_new     = Column(Boolean, default=True)   # First time visitor
+
+Base.metadata.create_all(engine)
+
+# DB Migration
+from sqlalchemy import text
+with engine.connect() as conn:
+    for col_sql in [
+        "ALTER TABLE user_control ADD COLUMN tag VARCHAR DEFAULT ''",
+        "ALTER TABLE user_control ADD COLUMN is_new BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE leads ADD COLUMN email VARCHAR DEFAULT ''",
+        "ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'NEW'",
+        "ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'",
+    ]:
+        try:
+            conn.execute(text(col_sql))
+            conn.commit()
+        except Exception:
+            pass
+
+Session = sessionmaker(bind=engine)
+
+# ================================================================
+# DB HELPERS
+# ================================================================
+def now_ist():
+    return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
+
+def save_lead(phone, name, email, course):
+    db = Session()
+    lead = Lead(phone=phone, name=name, email=email, course=course,
+                status="ENROLLED", label="ENROLLED", timestamp=now_ist())
+    db.merge(lead)
+    db.commit()
+    db.close()
+    print(f"💾 LEAD: {name} | {email} | {course}")
+
+def upsert_lead_interest(phone, course):
+    """Create/update lead when user shows interest in a course"""
+    db = Session()
+    lead = db.query(Lead).filter_by(phone=phone).first()
+    if not lead:
+        lead = Lead(phone=phone, name=phone, course=course,
+                    status="INTERESTED", label="INTERESTED", timestamp=now_ist())
+        db.add(lead)
+    elif lead.status == "NEW":
+        lead.status = "INTERESTED"
+        lead.label  = "INTERESTED"
+        lead.course = course
+    db.commit()
+    db.close()
+
+def save_message(phone, name, text_content, direction):
+    db = Session()
+    msg_id = f"{phone}_{now_ist().timestamp()}"
+    db.add(Message(id=msg_id, phone=phone, name=name,
+                   text=text_content, direction=direction, timestamp=now_ist()))
+    db.commit()
+    db.close()
+
+def is_human_mode(phone):
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    db.close()
+    return ctrl.is_human if ctrl else False
+
+def is_new_user(phone):
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    db.close()
+    return ctrl.is_new if ctrl else True
+
+def mark_user_seen(phone):
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    if not ctrl:
+        ctrl = UserControl(phone=phone, is_new=False)
+        db.add(ctrl)
+    else:
+        ctrl.is_new = False
+    db.commit()
+    db.close()
+
+def set_human_mode(phone, value: bool):
+    db = Session()
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    if not ctrl:
+        ctrl = UserControl(phone=phone, is_human=value)
+        db.add(ctrl)
+    else:
+        ctrl.is_human = value
+    db.commit()
+    db.close()
+
+def update_lead_status(phone, status):
+    db = Session()
+    lead = db.query(Lead).filter_by(phone=phone).first()
+    if not lead:
+        lead = Lead(phone=phone, name=phone, status=status,
+                    label=status, timestamp=now_ist())
+        db.add(lead)
+    else:
+        lead.status = status
+        lead.label  = status
+    ctrl = db.query(UserControl).filter_by(phone=phone).first()
+    if not ctrl:
+        ctrl = UserControl(phone=phone, tag=status)
+        db.add(ctrl)
+    else:
+        ctrl.tag = status
+    db.commit()
+    db.close()
+
+# ================================================================
+# WEBSOCKET
+# ================================================================
+class ConnectionManager:
+    def __init__(self):
+        self.connections = []
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.connections.append(ws)
+    def disconnect(self, ws: WebSocket):
+        if ws in self.connections:
+            self.connections.remove(ws)
+    async def broadcast(self, data: dict):
+        for conn in self.connections:
+            try: await conn.send_json(data)
+            except: pass
+
+manager = ConnectionManager()
+
+# ================================================================
+# STATE MACHINE
+# ================================================================
 ENROLLMENT_FLOW = {
     "ask_name": {
-        "message":  "Please share your *full name*:",
-        "save_as":  "name",
-        "next":     "ask_email",
-        "validate": None,
+        "message": "Please share your *full name*:",
+        "save_as": "name", "next": "ask_email", "validate": None,
     },
     "ask_email": {
-        "message":  "Please share your *email address*:",
-        "save_as":  "email",
-        "next":     "ask_phone",
+        "message": "Please share your *email address*:",
+        "save_as": "email", "next": "ask_phone",
         "validate": lambda v: "@" in v and "." in v,
-        "error":    "Please enter a valid email 📧 (e.g. name@gmail.com)",
+        "error": "Please enter a valid email 📧 (e.g. name@gmail.com)",
     },
     "ask_phone": {
-        "message":  "Please share your *contact number*:",
-        "save_as":  "contact",
-        "next":     "done",
+        "message": "Please share your *contact number*:",
+        "save_as": "contact", "next": "done",
         "validate": lambda v: v.replace(" ","").replace("+","").isdigit() and len(v) >= 8,
-        "error":    "Please enter a valid phone number 📱",
+        "error": "Please enter a valid phone number 📱",
     },
 }
 
-# Session store: { phone: { "step": "ask_name", "data": { "name": ..., "course": ... } } }
 sessions = {}
 
 def get_session(phone):
@@ -114,155 +309,23 @@ def get_from_session(phone, key, default=None):
     return sessions[phone]["data"].get(key, default)
 
 # ================================================================
-# 3. DATABASE
-# ================================================================
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-
-engine = create_engine(DATABASE_URL)
-Base   = declarative_base()
-
-class Lead(Base):
-    __tablename__ = "leads"
-    phone     = Column(String, primary_key=True)
-    name      = Column(String)
-    email     = Column(String)
-    course    = Column(String)
-    status    = Column(String, default="new")
-    label     = Column(String, default="NEW")
-    timestamp = Column(DateTime, default=lambda: (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
-
-class Message(Base):
-    __tablename__ = "messages"
-    id        = Column(String, primary_key=True)
-    phone     = Column(String)
-    name      = Column(String)
-    text      = Column(Text)
-    direction = Column(String)
-    timestamp = Column(DateTime, default=lambda: (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
-
-class UserControl(Base):
-    __tablename__ = "user_control"
-    phone    = Column(String, primary_key=True)
-    is_human = Column(Boolean, default=False)
-    tag      = Column(String, default="")
-
-Base.metadata.create_all(engine)
-
-# ── DB MIGRATION: Add missing columns safely ──
-from sqlalchemy import text
-with engine.connect() as conn:
-    try:
-        conn.execute(text("ALTER TABLE user_control ADD COLUMN tag VARCHAR DEFAULT ''"))
-        conn.commit()
-        print("✅ Migration: added tag column")
-    except Exception:
-        pass  # Column already exists
-    try:
-        conn.execute(text("ALTER TABLE leads ADD COLUMN email VARCHAR DEFAULT ''"))
-        conn.commit()
-        print("✅ Migration: added email column")
-    except Exception:
-        pass
-    try:
-        conn.execute(text("ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'new'"))
-        conn.commit()
-        print("✅ Migration: added status column")
-    except Exception:
-        pass
-    try:
-        conn.execute(text("ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'"))
-        conn.commit()
-        print("✅ Migration: added label column")
-    except Exception:
-        pass
-Session = sessionmaker(bind=engine)
-
-def save_lead(phone, name, email, course):
-    db = Session()
-    lead = Lead(phone=phone, name=name, email=email, course=course,
-                status="enrolled", label="ENROLLED", timestamp=(datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None))
-    db.merge(lead)
-    db.commit()
-    db.close()
-    print(f"💾 LEAD: {name} | {email} | {course}")
-
-def save_message(phone, name, text, direction):
-    db = Session()
-    now = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)  # IST
-    msg_id = f"{phone}_{now.timestamp()}"
-    db.add(Message(id=msg_id, phone=phone, name=name,
-                   text=text, direction=direction, timestamp=now))
-    db.commit()
-    db.close()
-
-def is_human_mode(phone):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
-    db.close()
-    return ctrl.is_human if ctrl else False
-
-def set_human_mode(phone, value: bool):
-    db = Session()
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
-    if not ctrl:
-        ctrl = UserControl(phone=phone, is_human=value)
-        db.add(ctrl)
-    else:
-        ctrl.is_human = value
-    db.commit()
-    db.close()
-
-def update_label(phone, label):
-    db = Session()
-    lead = db.query(Lead).filter_by(phone=phone).first()
-    if lead:
-        lead.label = label
-    ctrl = db.query(UserControl).filter_by(phone=phone).first()
-    if not ctrl:
-        ctrl = UserControl(phone=phone, tag=label)
-        db.add(ctrl)
-    else:
-        ctrl.tag = label
-    db.commit()
-    db.close()
-
-# ================================================================
-# 4. WEBSOCKET
-# ================================================================
-class ConnectionManager:
-    def __init__(self):
-        self.connections = []
-    async def connect(self, ws: WebSocket):
-        await ws.accept()
-        self.connections.append(ws)
-    def disconnect(self, ws: WebSocket):
-        if ws in self.connections:
-            self.connections.remove(ws)
-    async def broadcast(self, data: dict):
-        for conn in self.connections:
-            try: await conn.send_json(data)
-            except: pass
-
-manager = ConnectionManager()
-
-# ================================================================
-# 5. BOT RESPONSE BUILDER
+# BOT HELPERS
 # ================================================================
 def course_list_msg():
-    lines = ["📚 *Available Courses:*\n"]
+    lines = ["📚 *Our Courses:*\n"]
     for i, (_, c) in enumerate(COURSES.items(), 1):
         lines.append(f"{i}. {c['emoji']} {c['name']} — {c['price']}")
-    lines.append("\nReply with *number* to know more! (e.g. 1, 2, 3, 4)")
+    lines.append("\nReply with *number* (1-4) to know more!")
     return "\n".join(lines)
 
 def course_detail_msg(key):
     c = COURSES[key]
+    h = "\n".join([f"✅ {x}" for x in c['highlights'][:3]])
     return (f"{c['emoji']} *{c['name']}*\n\n"
-            f"📅 Duration: {c['duration']}\n"
-            f"💰 Price: {c['price']}\n"
-            f"🗓 Next batch: {c['batch']}\n\n"
-            f"Reply *Enroll* to join!")
+            f"💰 {c['price']}\n"
+            f"📅 {c['duration']}\n\n"
+            f"{h}\n\n"
+            f"Reply *Enroll* to join or visit:\n{c['url']}")
 
 def enrollment_done_msg(session):
     d = session["data"]
@@ -270,18 +333,16 @@ def enrollment_done_msg(session):
             f"👤 Name: {d.get('name','—')}\n"
             f"📧 Email: {d.get('email','—')}\n"
             f"📱 Phone: {d.get('contact','—')}\n"
-            f"📚 Course: {d.get('course','—')}\n\n"
+            f"📚 Course: {d.get('course','General')}\n\n"
             f"Our team will contact you within 24 hours! 🎉\n\n"
             f"Type *Hi* to explore more courses.")
 
 # ================================================================
-# 6. AI LAYER (Mock now → Real AI next)
+# AI LAYER
 # ================================================================
 def call_ai(message: str) -> str:
-    """
-    Real OpenAI-powered AI function.
-    Falls back gracefully if API fails.
-    """
+    if not openai_client:
+        return None
     try:
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -289,42 +350,38 @@ def call_ai(message: str) -> str:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user",   "content": message}
             ],
-            max_tokens=150,      # Keep answers short for WhatsApp
+            max_tokens=150,
             temperature=0.7
         )
         answer = response.choices[0].message.content.strip()
-        print(f"🤖 OpenAI: {answer[:80]}...")
+        # Phase 1: Fallback if AI answer is too long or empty
+        if not answer or len(answer) > 400:
+            return None
+        print(f"🤖 AI: {answer[:80]}...")
         return answer
     except Exception as e:
-        print(f"⚠️ OpenAI error: {e}")
-        return None  # Falls through to default fallback
+        print(f"⚠️ AI error: {e}")
+        return None
 
-# 7. MAIN MESSAGE HANDLER (State Machine)
+# ================================================================
+# MAIN MESSAGE HANDLER
 # ================================================================
 def handle_message(text, phone):
-    msg          = text.lower().strip()
-    text_original = text.strip()  # Keep original for Zeneral AI
-    session = get_session(phone)
-    step    = session["step"]
-    data    = session["data"]
+    msg           = text.lower().strip()
+    msg_words     = msg.split()
+    text_original = text.strip()
+    session       = get_session(phone)
+    step          = session["step"]
 
-    # ── ACTIVE ENROLLMENT FLOW ──
+    # ── Enrollment Flow ──
     if step in ENROLLMENT_FLOW:
-        flow = ENROLLMENT_FLOW[step]
-
-        # Validate input
+        flow      = ENROLLMENT_FLOW[step]
         validator = flow.get("validate")
         if validator and not validator(text):
             return flow.get("error", "Invalid input. Please try again.")
-
-        # Save answer
         save_to_session(phone, flow["save_as"], text.strip())
-
-        # Move to next step
         next_step = flow["next"]
         set_step(phone, next_step)
-
-        # If flow complete
         if next_step == "done":
             name   = get_from_session(phone, "name", "Friend")
             email  = get_from_session(phone, "email", "")
@@ -333,25 +390,20 @@ def handle_message(text, phone):
             reply  = enrollment_done_msg(session)
             reset_session(phone)
             return reply
-
-        # Ask next question
         return ENROLLMENT_FLOW[next_step]["message"]
 
-    # ── MENU FLOW ──
-    # Reset / Welcome
-    # Word boundary check to avoid matching "hi" inside "which", "this" etc.
-    msg_words = msg.split()
-    if any(x in msg_words for x in ["hi", "hello", "hey", "start", "menu"]):
+    # ── Phase 1: Restart command ──
+    if any(x in msg_words for x in ["hi", "hello", "hey", "start", "menu", "restart"]):
         reset_session(phone)
         return BOT_CONFIG["welcome"]
 
-    # View courses
+    # ── View courses ──
     if msg in ["1", "courses", "course", "view courses", "view"]:
         session["fallback_count"] = 0
         set_step(phone, "pick_course")
         return course_list_msg()
 
-    # Pick course by number (1-4) ONLY when in pick_course step
+    # ── Pick course by number ──
     if step == "pick_course":
         course_keys = list(COURSES.keys())
         course_map  = {str(i+1): key for i, key in enumerate(course_keys)}
@@ -359,55 +411,55 @@ def handle_message(text, phone):
             key = course_map[msg]
             save_to_session(phone, "course", COURSES[key]["name"])
             set_step(phone, None)
+            upsert_lead_interest(phone, COURSES[key]["name"])
             session["fallback_count"] = 0
             return course_detail_msg(key)
-        # If not a valid course number while in pick_course
         return "Please reply with a number 1-4 to select a course 👆"
 
-    # Course details by name
+    # ── Course by name ──
     for key in COURSES:
-        if key in msg:
+        if key.replace("_", " ") in msg or key.split("_")[0] in msg:
             save_to_session(phone, "course", COURSES[key]["name"])
+            upsert_lead_interest(phone, COURSES[key]["name"])
             set_step(phone, None)
             session["fallback_count"] = 0
             return course_detail_msg(key)
 
-    # Start enrollment
+    # ── Enroll ──
     if msg in ["2", "enroll", "enroll now", "join", "register"] and step != "pick_course":
         set_step(phone, "ask_name")
         session["fallback_count"] = 0
         return f"Great choice! 🎉\n\n{ENROLLMENT_FLOW['ask_name']['message']}"
 
-    # Talk to counselor — always available regardless of step
+    # ── Counselor ──
     if msg in ["3", "counselor", "human", "agent", "help", "talk to counselor", "talk"]:
         set_human_mode(phone, True)
         reset_session(phone)
+        update_lead_status(phone, "HOT LEAD")
         session["fallback_count"] = 0
         return "📞 Connecting you to a counselor...\nA human agent will reply shortly! ⏳"
 
-    # ── AI LAYER ──
-    # If no menu option matched → try AI
+    # ── AI Layer ──
     ai_answer = call_ai(text_original)
     if ai_answer:
         session["fallback_count"] = 0
         return ai_answer
 
-    # If Zeneral also fails → smart escalation
+    # ── Smart escalation ──
     session["fallback_count"] = session.get("fallback_count", 0) + 1
     if session["fallback_count"] >= 2:
         session["fallback_count"] = 0
         set_human_mode(phone, True)
-        return "🙏 Let me connect you to a human agent who can help better!\n\nPlease wait..."
+        return "🙏 Let me connect you to a human agent!\n\nPlease wait..."
 
     return BOT_CONFIG["fallback"]
 
 # ================================================================
-# 7. SEND WHATSAPP
+# SEND WHATSAPP
 # ================================================================
 def send_whatsapp(phone, message):
-    """Send via Gupshup WA API (Cloud API mode)"""
     try:
-        url = "https://api.gupshup.io/wa/api/v1/msg"
+        url    = "https://api.gupshup.io/wa/api/v1/msg"
         params = urllib.parse.urlencode({
             "channel":     "whatsapp",
             "source":      GUPSHUP_NUMBER,
@@ -419,18 +471,16 @@ def send_whatsapp(phone, message):
         req.add_header("apikey", GUPSHUP_API_KEY)
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
         with urllib.request.urlopen(req) as res:
-            response = res.read().decode()
-            print(f"✅ SENT → {phone}: {message[:60]}...")
-            print(f"   Response: {response}")
+            print(f"✅ Sent → {phone}: {message[:60]}...")
     except Exception as e:
         print(f"❌ Send error: {e}")
 
 # ================================================================
-# 8. API ROUTES
+# ROUTES
 # ================================================================
 @app.get("/")
 def home():
-    return {"status": "9faqs Bot v3.0 ✅", "flows": list(ENROLLMENT_FLOW.keys())}
+    return {"status": "9faqs Bot v4.0 ✅"}
 
 @app.get("/dashboard")
 def dashboard():
@@ -441,9 +491,9 @@ def get_leads():
     db    = Session()
     leads = db.query(Lead).order_by(Lead.timestamp.desc()).all()
     db.close()
-    return [{"phone": l.phone, "name": l.name, "email": l.email,
-             "course": l.course, "status": l.status, "label": l.label,
-             "timestamp": str(l.timestamp)} for l in leads]
+    return [{"phone": l.phone, "name": l.name, "email": l.email or "",
+             "course": l.course or "", "status": l.status or "NEW",
+             "label": l.label or "NEW", "timestamp": str(l.timestamp)} for l in leads]
 
 @app.get("/conversations")
 def get_conversations():
@@ -466,10 +516,37 @@ def get_messages(phone: str):
     return [{"text": m.text, "direction": m.direction,
              "timestamp": str(m.timestamp), "name": m.name} for m in msgs]
 
+# Phase 2: Update lead status from dashboard
+@app.post("/status/{phone}")
+async def update_status(phone: str, req: Request):
+    body   = await req.json()
+    status = body.get("status", "NEW")
+    update_lead_status(phone, status)
+    await manager.broadcast({"type": "status_update", "phone": phone, "status": status})
+    return {"status": "updated"}
+
+@app.get("/metrics")
+def get_metrics():
+    db    = Session()
+    leads = db.query(Lead).all()
+    msgs  = db.query(Message).all()
+    db.close()
+    today = now_ist().date()
+    return {
+        "total_leads":         len(leads),
+        "enrolled":            len([l for l in leads if l.status == "ENROLLED"]),
+        "interested":          len([l for l in leads if l.status == "INTERESTED"]),
+        "hot_leads":           len([l for l in leads if "HOT" in (l.status or "")]),
+        "new":                 len([l for l in leads if l.status == "NEW"]),
+        "today_leads":         len([l for l in leads if l.timestamp and l.timestamp.date() == today]),
+        "total_messages":      len(msgs),
+        "total_conversations": len(set(m.phone for m in msgs)),
+    }
+
 @app.post("/takeover/{phone}")
 async def takeover(phone: str):
     set_human_mode(phone, True)
-    update_label(phone, "HOT LEAD")
+    update_lead_status(phone, "HOT LEAD")
     await manager.broadcast({"type": "takeover", "phone": phone})
     return {"status": "human mode on"}
 
@@ -494,7 +571,7 @@ async def agent_reply(phone: str, req: Request):
 async def tag_lead(phone: str, req: Request):
     body = await req.json()
     tag  = body.get("tag", "")
-    update_label(phone, tag)
+    update_lead_status(phone, tag)
     await manager.broadcast({"type": "tag_update", "phone": phone, "tag": tag})
     return {"status": "tagged"}
 
@@ -525,14 +602,22 @@ async def webhook(req: Request):
             text = msg["text"]["body"]
             print(f"📩 {name} ({phone}): {text}")
             save_message(phone, name, text, "in")
+
+            # Phase 6: Broadcast for real-time dashboard
             await manager.broadcast({"type": "new_message", "phone": phone,
                                      "name": name, "text": text, "direction": "in"})
 
             if is_human_mode(phone):
-                print(f"👤 Human mode active — skipping bot for {phone}")
+                print(f"👤 Human mode — skipping bot for {phone}")
                 return {"status": "ok"}
 
-            reply = handle_message(text, phone)
+            # Phase 1: First time user gets welcome
+            if is_new_user(phone):
+                mark_user_seen(phone)
+                reply = BOT_CONFIG["welcome"]
+            else:
+                reply = handle_message(text, phone)
+
             send_whatsapp(phone, reply)
             save_message(phone, "Bot", reply, "out")
             await manager.broadcast({"type": "new_message", "phone": phone,

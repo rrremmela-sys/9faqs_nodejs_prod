@@ -155,6 +155,7 @@ tr:hover td{background:rgba(0,255,136,0.02);}
 
   <!-- LEADS PAGE -->
   <div class="page active" id="leadsPage">
+    <!-- Phase 4: Metrics -->
     <div class="stats">
       <div class="stat-card green"><div class="stat-label">Total Leads</div><div class="stat-value" id="statTotal">—</div></div>
       <div class="stat-card blue"><div class="stat-label">Enrolled</div><div class="stat-value blue" id="statEnrolled">—</div></div>
@@ -190,8 +191,9 @@ tr:hover td{background:rgba(0,255,136,0.02);}
             <th>Phone</th>
             <th>Email</th>
             <th>Course</th>
-            <th>Label</th>
+            <th>Status</th>
             <th>Time (IST)</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody id="leadsTable">
@@ -313,8 +315,18 @@ function renderLeads(leads) {
       <td class="muted">${l.phone || "—"}</td>
       <td class="muted">${l.email || "—"}</td>
       <td><span class="course-badge ${getCourseClass(l.course)}">${l.course || "—"}</span></td>
-      <td><span class="label ${getLabelClass(l.label)}">${l.label || "NEW"}</span></td>
+      <td><span class="label ${getLabelClass(l.status)}">${l.status || "NEW"}</span></td>
       <td class="muted" style="font-size:11px">${formatTime(l.timestamp)}</td>
+      <td>
+        <select class="tag-select" onchange="updateStatus('${l.phone}', this.value)" style="font-size:10px">
+          <option value="">Change</option>
+          <option value="NEW" ${l.status==='NEW'?'selected':''}>🆕 New</option>
+          <option value="INTERESTED" ${l.status==='INTERESTED'?'selected':''}>👀 Interested</option>
+          <option value="ENROLLED" ${l.status==='ENROLLED'?'selected':''}>✅ Enrolled</option>
+          <option value="HOT LEAD" ${l.status==='HOT LEAD'?'selected':''}>🔥 Hot Lead</option>
+          <option value="CLOSED" ${l.status==='CLOSED'?'selected':''}>🔒 Closed</option>
+        </select>
+      </td>
     </tr>`).join("");
 }
 
@@ -342,6 +354,17 @@ function filterLeads() {
     const matchC = !course || (l.course||"").includes(course);
     return matchQ && matchL && matchC;
   }));
+}
+
+async function updateStatus(phone, status) {
+  if (!status) return;
+  await fetch(`${API}/status/${phone}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({status})
+  });
+  showNotif(`Status updated: ${status} ✅`);
+  loadLeads();
 }
 
 function exportCSV() {
