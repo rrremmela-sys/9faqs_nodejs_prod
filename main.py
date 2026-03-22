@@ -142,18 +142,21 @@ Base.metadata.create_all(engine)
 # DB Migration
 from sqlalchemy import text
 with engine.connect() as conn:
-    for col_sql in [
+    migrations = [
         "ALTER TABLE user_control ADD COLUMN tag VARCHAR DEFAULT ''",
         "ALTER TABLE user_control ADD COLUMN is_new BOOLEAN DEFAULT TRUE",
         "ALTER TABLE leads ADD COLUMN email VARCHAR DEFAULT ''",
         "ALTER TABLE leads ADD COLUMN status VARCHAR DEFAULT 'NEW'",
         "ALTER TABLE leads ADD COLUMN label VARCHAR DEFAULT 'NEW'",
-    ]:
+    ]
+    for col_sql in migrations:
         try:
             conn.execute(text(col_sql))
             conn.commit()
-        except Exception:
-            pass
+            print(f"✅ Migration: {col_sql[:50]}")
+        except Exception as e:
+            conn.rollback()
+            pass  # Column already exists
 
 Session = sessionmaker(bind=engine)
 
