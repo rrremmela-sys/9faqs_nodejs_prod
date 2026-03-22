@@ -5,6 +5,7 @@ from sqlalchemy import create_engine, Column, String, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from openai import OpenAI
+from pinecone import Pinecone
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -24,7 +25,19 @@ DATABASE_URL    = os.getenv("DATABASE_URL", "sqlite:///leads.db")
 OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY")
 CLIENT_ID       = os.getenv("CLIENT_ID", "9faqs")   # ← change per deployment
 
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+openai_client  = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "zeneral-kb")
+
+# Initialize Pinecone
+try:
+    pc    = Pinecone(api_key=PINECONE_API_KEY) if PINECONE_API_KEY else None
+    pindex = pc.Index(PINECONE_INDEX) if pc else None
+    print(f"✅ Pinecone connected: {PINECONE_INDEX}")
+except Exception as e:
+    print(f"⚠️ Pinecone init failed: {e}")
+    pc     = None
+    pindex = None
 
 def now_ist():
     return (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).replace(tzinfo=None)
@@ -394,24 +407,71 @@ def enrollment_done_msg(session, client):
 # ================================================================
 # AI LAYER
 # ================================================================
+def get_rag_context(question: str, top_k: int = 3) -> str:
+    """Search Pinecone for relevant context"""
+    if not pindex or not openai_client:
+        return ""
+    try:
+        # Create embedding for question
+        emb_response = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=question
+        )
+        embedding = emb_response.data[0].embedding
+
+        # Search Pinecone
+        results = pindex.query(
+            vector=embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+
+        # Build context from results
+        context_parts = []
+        for match in results["matches"]:
+            if match["score"] > 0.3:  # Only use relevant results
+                meta = match["metadata"]
+                context_parts.append(
+                    "Topic: " + meta.get("name","") + "\n" + meta.get("context","")
+                )
+
+        context = "\n\n---\n\n".join(context_parts)
+        print(f"🔍 RAG: found {len(context_parts)} relevant chunks (score>{0.3})")
+        return context
+    except Exception as e:
+        print(f"⚠️ RAG error: {e}")
+        return ""
+
 def call_ai(message: str, client: dict) -> str:
+    """RAG-powered AI response using Pinecone + OpenAI"""
     if not openai_client:
         return None
     try:
-        prompt = client.get("system_prompt", "You are a helpful assistant.")
+        # Step 1: Get relevant context from Pinecone
+        context = get_rag_context(message)
+
+        # Step 2: Build prompt with context
+        base_prompt = client.get("system_prompt", "You are a helpful assistant.")
+
+        if context:
+            system_prompt = base_prompt + "\n\nUse the following knowledge base context to answer accurately:\n\n" + context + "\n\nIf the answer is not in the context, use your general knowledge but stay focused on the business."
+        else:
+            system_prompt = base_prompt
+
+        # Step 3: Get OpenAI response
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": prompt},
+                {"role": "system", "content": system_prompt},
                 {"role": "user",   "content": message}
             ],
-            max_tokens=150,
-            temperature=0.7
+            max_tokens=200,
+            temperature=0.5
         )
         answer = response.choices[0].message.content.strip()
-        if not answer or len(answer) > 400:
+        if not answer or len(answer) > 500:
             return None
-        print(f"🤖 AI: {answer[:80]}...")
+        print(f"🤖 RAG Answer: {answer[:80]}...")
         return answer
     except Exception as e:
         print(f"⚠️ AI error: {e}")
@@ -509,15 +569,13 @@ def handle_message(text, phone, cid=None):
     # ── Restart ──
     if any(x in msg_words for x in ["hi", "hello", "hey", "start", "menu", "restart"]):
         reset_session(phone, cid)
+        # Check if returning enrolled/interested user
+        returning = get_returning_user_msg(phone, cid)
+        if returning:
+            return returning
         return client["welcome"]
 
-    # ── View catalog ──
-    if msg in ["1", "courses", "course", "rooms", "room", "view", "catalog"]:
-        session["fallback_count"] = 0
-        set_step(phone, cid, "pick_item")
-        return catalog_list_msg(client)
-
-    # ── Pick by number ──
+    # ── Pick by number (MUST check before menu to avoid conflict) ──
     if step == "pick_item":
         item_map = {str(i+1): key for i, key in enumerate(catalog_keys)}
         if msg in item_map:
@@ -528,7 +586,15 @@ def handle_message(text, phone, cid=None):
             upsert_lead_interest(phone, item["name"], cid)
             session["fallback_count"] = 0
             return catalog_detail_msg(item)
-        return f"Please reply with a number 1-{len(catalog_keys)} 👆"
+        elif msg in ["1", "2", "3", "4"]:
+            return "Please reply with a number 1-" + str(len(catalog_keys)) + " to pick a course 👆\n\n" + catalog_list_msg(client)
+        # Non-number input while in pick_item — let it fall through to AI
+
+    # ── View catalog ──
+    if msg in ["courses", "course", "rooms", "room", "view", "catalog"] or (msg == "1" and step != "pick_item"):
+        session["fallback_count"] = 0
+        set_step(phone, cid, "pick_item")
+        return catalog_list_msg(client)
 
     # ── Pick by keyword ──
     for key in catalog_keys:
